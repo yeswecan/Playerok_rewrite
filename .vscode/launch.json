@@ -1,0 +1,32 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "chrome",
+            "request": "launch",
+            "name": "Launch Chrome against localhost",
+            "url": "http://localhost:5173",
+            "webRoot": "${workspaceFolder}/frontend",
+            "sourceMaps": true,
+            "sourceMapPathOverrides": {
+                "/@fs/*": "*",
+                "webpack:///./~/*": "${webRoot}/node_modules/*",
+                "webpack://?:*/*": "${webRoot}/*"
+            }
+        },
+        {
+            "type": "node",
+            "request": "launch",
+            "name": "Debug Vite Dev Server",
+            "autoAttachChildProcesses": true,
+            "program": "${workspaceFolder}/frontend/node_modules/vite/bin/vite.js",
+            "cwd": "${workspaceFolder}/frontend"
+        }
+    ],
+    "compounds": [
+        {
+            "name": "Debug Full Stack",
+            "configurations": ["Debug Vite Dev Server", "Launch Chrome against localhost"]
+        }
+    ]
+}
