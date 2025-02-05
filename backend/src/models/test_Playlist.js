@@ -1,4 +1,4 @@
-const PlaylistItem = require('./PlaylistItem');
+const PlaylistItem = require('./test_PlaylistItem');
 const fs = require('fs').promises;
 const path = require('path');
 

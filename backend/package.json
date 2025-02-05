@@ -2,11 +2,11 @@
   "name": "playerok-backend",
   "version": "1.0.0",
   "description": "Backend for Playerok media player control system",
-  "main": "src/server.js",
+  "main": "src/test_server.js",
   "scripts": {
-    "start": "node src/server.js",
-    "test": "mocha src/tests/*.test.js",
-    "dev": "nodemon src/server.js"
+    "start": "node src/test_server.js",
+    "test": "mocha src/tests/test_*.test.js",
+    "dev": "nodemon src/test_server.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

@@ -2,39 +2,66 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs').promises;
-const Playlist = require('./models/Playlist');
+const Playlist = require('./models/test_Playlist');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware
-app.use(cors());
+// Detailed request logging middleware
+app.use((req, res, next) => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+    console.log('Headers:', req.headers);
+    next();
+});
+
+// CORS configuration
+app.use(cors({
+    origin: ['http://localhost:5173', 'http://192.168.1.5:5173'],
+    methods: ['GET', 'POST', 'DELETE', 'OPTIONS', 'PATCH'],
+    allowedHeaders: ['Content-Type'],
+    credentials: true
+}));
+
 app.use(express.json());
 
 // Storage configuration
 const PLAYLISTS_DIR = path.join(__dirname, '../../playlists');
 const VIDEOS_DIR = path.join(__dirname, '../../payload');
 
+// Serve video files statically
+app.use('/videos', express.static(VIDEOS_DIR));
+
 // Ensure directories exist
 async function ensureDirectories() {
     await fs.mkdir(PLAYLISTS_DIR, { recursive: true });
     await fs.mkdir(VIDEOS_DIR, { recursive: true });
+    console.log('Directories ensured:', {
+        PLAYLISTS_DIR,
+        VIDEOS_DIR
+    });
 }
 
 // List all available playlists
 app.get('/api/listPlaylists', async (req, res) => {
     try {
+        console.log('Listing playlists from directory:', PLAYLISTS_DIR);
         const files = await fs.readdir(PLAYLISTS_DIR);
+        console.log('Found files:', files);
+        
         const playlists = await Promise.all(
             files
                 .filter(file => file.endsWith('.json'))
                 .map(async file => {
+                    console.log('Loading playlist:', file);
                     const playlist = await Playlist.load(path.join(PLAYLISTS_DIR, file));
                     return { name: playlist.name, itemCount: playlist.items.length };
                 })
         );
+        
+        console.log('Sending playlists:', playlists);
         res.json(playlists);
     } catch (error) {
+        console.error('Error in listPlaylists:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -163,12 +190,31 @@ app.post('/api/toggleLoop/:name/:index', async (req, res) => {
     }
 });
 
+// List available videos
+app.get('/api/listVideos', async (req, res) => {
+    try {
+        const files = await fs.readdir(VIDEOS_DIR);
+        const videoFiles = files.filter(file => 
+            /\.(mp4|avi|mkv|mov|wmv)$/i.test(file)
+        );
+        res.json(videoFiles);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Start server
 async function start() {
-    await ensureDirectories();
-    app.listen(PORT, () => {
-        console.log(`Server running on port ${PORT}`);
-    });
+    try {
+        await ensureDirectories();
+        app.listen(PORT, '0.0.0.0', () => {
+            console.log(`Server running on port ${PORT}`);
+            console.log('CORS enabled for:', ['http://localhost:5173', 'http://192.168.1.5:5173']);
+        });
+    } catch (error) {
+        console.error('Failed to start server:', error);
+        process.exit(1);
+    }
 }
 
 start(); 

@@ -1,14 +1,17 @@
-import DraggableList from './components/DraggableList'
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import PlaylistsPage from './pages/test_PlaylistsPage';
+import PlaylistEditorPage from './pages/test_PlaylistEditorPage';
 
-function App() {
+const App = () => {
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="container mx-auto p-4">
-        <h1 className="text-2xl font-bold mb-6 text-center">Draggable Tasks</h1>
-        <DraggableList />
-      </div>
-    </div>
-  )
-}
+    <Router>
+      <Routes>
+        <Route path="/" element={<PlaylistsPage />} />
+        <Route path="/playlist/:name" element={<PlaylistEditorPage />} />
+      </Routes>
+    </Router>
+  );
+};
 
-export default App
+export default App;

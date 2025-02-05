@@ -1,4 +1,4 @@
-const Playlist = require('./models/Playlist');
+const Playlist = require('./models/test_Playlist');
 const path = require('path');
 
 async function generateTestPlaylist() {

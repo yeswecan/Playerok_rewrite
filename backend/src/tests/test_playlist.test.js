@@ -1,8 +1,8 @@
 const fs = require('fs').promises;
 const path = require('path');
 const { expect } = require('chai');
-const Playlist = require('../models/Playlist');
-const PlaylistItem = require('../models/PlaylistItem');
+const Playlist = require('../models/test_Playlist');
+const PlaylistItem = require('../models/test_PlaylistItem');
 
 const TEST_DIR = path.join(__dirname, '../data/test');
 const TEST_VIDEOS_DIR = path.join(TEST_DIR, 'videos');
