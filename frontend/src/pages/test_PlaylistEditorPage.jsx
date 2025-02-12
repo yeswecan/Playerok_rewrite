@@ -19,6 +19,12 @@ const PlaylistEditorPage = () => {
     outgoingCommands: [],
     ingoingCommands: []
   });
+  const [uploadError, setUploadError] = useState(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadedFile, setUploadedFile] = useState(null);
+  const [showSettingsAfterUpload, setShowSettingsAfterUpload] = useState(false);
 
   useEffect(() => {
     fetchPlaylist();
@@ -141,6 +147,102 @@ const PlaylistEditorPage = () => {
     }
   };
 
+  const handleUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    setUploadError(null);
+    setUploadProgress(0);
+    setUploadedFile(null);
+
+    const formData = new FormData();
+    formData.append('video', file);
+
+    try {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${API_URL}/api/upload`, true);
+
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const percentComplete = (e.loaded / e.total) * 100;
+          setUploadProgress(Math.round(percentComplete));
+          console.log('Upload progress:', percentComplete);
+        }
+      };
+
+      xhr.onerror = () => {
+        console.error('XHR error:', xhr.statusText);
+        setUploadError('Network error occurred during upload');
+        setIsUploading(false);
+      };
+
+      const uploadPromise = new Promise((resolve, reject) => {
+        xhr.onload = () => {
+          if (xhr.status === 200) {
+            try {
+              const result = JSON.parse(xhr.responseText);
+              resolve(result);
+            } catch (e) {
+              reject(new Error('Invalid response format'));
+            }
+          } else {
+            try {
+              const errorData = JSON.parse(xhr.responseText);
+              reject(new Error(errorData.error || 'Upload failed'));
+            } catch (e) {
+              reject(new Error(`Upload failed with status ${xhr.status}`));
+            }
+          }
+        };
+      });
+
+      xhr.send(formData);
+      const result = await uploadPromise;
+
+      console.log('Upload completed:', result);
+      setUploadedFile(result);
+      setShowSettingsAfterUpload(true);
+      await fetchAvailableVideos();
+      setUploadProgress(100);
+    } catch (error) {
+      console.error('Upload error:', error);
+      setUploadError(error.message);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleAddUploadedVideo = async () => {
+    if (!uploadedFile) return;
+
+    try {
+      await fetch(`${API_URL}/api/addToPlaylist/${name}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filename: uploadedFile.filename,
+          isPartOfLoop: newItem.isPartOfLoop,
+          outgoingCommands: newItem.outgoingCommands,
+          ingoingCommands: newItem.ingoingCommands
+        }),
+      });
+      setShowUploadModal(false);
+      setShowSettingsAfterUpload(false);
+      setUploadedFile(null);
+      setNewItem({
+        filename: '',
+        isPartOfLoop: false,
+        outgoingCommands: [],
+        ingoingCommands: []
+      });
+      fetchPlaylist();
+    } catch (error) {
+      console.error('Error adding uploaded video:', error);
+      setUploadError('Failed to add video to playlist');
+    }
+  };
+
   if (isLoading) return (
     <div className="max-w-6xl mx-auto p-6">
       <div className="flex justify-between items-center mb-8">
@@ -186,6 +288,16 @@ const PlaylistEditorPage = () => {
           className="px-4 py-2 text-gray-600 hover:text-gray-800"
         >
           Back to Playlists
+        </button>
+      </div>
+
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-xl">{playlist.name}</h2>
+        <button
+          onClick={() => setShowUploadModal(true)}
+          className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+        >
+          Upload New Video
         </button>
       </div>
 
@@ -360,22 +472,160 @@ const PlaylistEditorPage = () => {
         onClose={() => setIsVideoModalOpen(false)}
         title="Video Preview"
         footer={
-          <button
-            onClick={() => setIsVideoModalOpen(false)}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-          >
-            Close
-          </button>
+          <>
+            <a
+              href={`${API_URL}/videos/${selectedVideo}`}
+              download
+              className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 mr-2"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Download Video
+            </a>
+            <button
+              onClick={() => setIsVideoModalOpen(false)}
+              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+            >
+              Close
+            </button>
+          </>
         }
       >
-        <video
-          src={`${API_URL}/videos/${selectedVideo}`}
-          controls
-          className="w-full"
-        >
-          Your browser does not support the video tag.
-        </video>
+        <div className="space-y-4">
+          <video
+            src={`${API_URL}/videos/${selectedVideo}`}
+            controls
+            className="w-full"
+          >
+            Your browser does not support the video tag.
+          </video>
+          <div className="text-sm text-gray-600">
+            <p>Direct link: <a href={`${API_URL}/videos/${selectedVideo}`} className="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">{`${API_URL}/videos/${selectedVideo}`}</a></p>
+          </div>
+        </div>
       </Modal>
+
+      {/* Upload Modal */}
+      {showUploadModal && (
+        <Modal
+          isOpen={showUploadModal}
+          onClose={() => {
+            setShowUploadModal(false);
+            setShowSettingsAfterUpload(false);
+            setUploadedFile(null);
+            setUploadError(null);
+          }}
+          title={showSettingsAfterUpload ? "Video Settings" : "Upload Video"}
+          footer={
+            <>
+              <button
+                onClick={() => {
+                  setShowUploadModal(false);
+                  setShowSettingsAfterUpload(false);
+                  setUploadedFile(null);
+                }}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800"
+              >
+                Cancel
+              </button>
+              {showSettingsAfterUpload ? (
+                <button
+                  onClick={handleAddUploadedVideo}
+                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                  disabled={!uploadedFile}
+                >
+                  Add to Playlist
+                </button>
+              ) : null}
+            </>
+          }
+        >
+          <div className="space-y-4">
+            {uploadError && (
+              <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+                {uploadError}
+              </div>
+            )}
+            
+            {!showSettingsAfterUpload ? (
+              <>
+                <input
+                  type="file"
+                  accept="video/*"
+                  onChange={handleUpload}
+                  disabled={isUploading}
+                  className="mb-4"
+                />
+                {isUploading && (
+                  <div className="w-full bg-gray-200 rounded">
+                    <div
+                      className="bg-blue-500 text-xs leading-none py-1 text-center text-white rounded"
+                      style={{ width: `${uploadProgress}%` }}
+                    >
+                      {uploadProgress}%
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex items-center space-x-2">
+                  <span className="text-sm font-medium">Uploaded File:</span>
+                  <span className="text-sm text-gray-600">{uploadedFile.filename}</span>
+                </div>
+                
+                <div>
+                  <label className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      checked={newItem.isPartOfLoop}
+                      onChange={(e) => setNewItem({...newItem, isPartOfLoop: e.target.checked})}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    />
+                    <span className="text-sm font-medium">Include in Loop</span>
+                  </label>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-1">Outgoing Commands</label>
+                  <input
+                    type="text"
+                    value={newItem.outgoingCommands.join(', ')}
+                    onChange={(e) => setNewItem({...newItem, outgoingCommands: e.target.value.split(',').map(cmd => cmd.trim())})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    placeholder="Enter commands separated by commas"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-1">Ingoing Commands</label>
+                  <input
+                    type="text"
+                    value={newItem.ingoingCommands.join(', ')}
+                    onChange={(e) => setNewItem({...newItem, ingoingCommands: e.target.value.split(',').map(cmd => cmd.trim())})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    placeholder="Enter commands separated by commas"
+                  />
+                </div>
+
+                {uploadedFile && (
+                  <div>
+                    <h3 className="text-sm font-medium mb-2">Preview</h3>
+                    <video
+                      src={`${API_URL}/videos/${uploadedFile.filename}`}
+                      controls
+                      className="w-full rounded"
+                      style={{ maxHeight: '200px' }}
+                    >
+                      Your browser does not support the video tag.
+                    </video>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };

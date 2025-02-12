@@ -2,10 +2,38 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs').promises;
+const multer = require('multer');
 const Playlist = require('./models/test_Playlist');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Configure multer for video upload
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, path.join(__dirname, '../../payload'));
+    },
+    filename: (req, file, cb) => {
+        // Keep original filename but ensure it's safe
+        const safeName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
+        cb(null, safeName);
+    }
+});
+
+const upload = multer({
+    storage: storage,
+    fileFilter: (req, file, cb) => {
+        // Accept only video files
+        if (file.mimetype.startsWith('video/')) {
+            cb(null, true);
+        } else {
+            cb(new Error('Only video files are allowed'));
+        }
+    },
+    limits: {
+        fileSize: 500 * 1024 * 1024 // 500MB limit
+    }
+});
 
 // Detailed request logging middleware
 app.use((req, res, next) => {
@@ -201,6 +229,36 @@ app.get('/api/listVideos', async (req, res) => {
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
+});
+
+// Upload video endpoint
+app.post('/api/upload', upload.single('video'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: 'No video file uploaded' });
+        }
+
+        // Return the filename and other relevant info
+        res.json({
+            filename: req.file.filename,
+            size: req.file.size,
+            mimetype: req.file.mimetype
+        });
+    } catch (error) {
+        console.error('Error uploading file:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Error handler for multer errors
+app.use((err, req, res, next) => {
+    if (err instanceof multer.MulterError) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+            return res.status(400).json({ error: 'File too large. Maximum size is 500MB' });
+        }
+        return res.status(400).json({ error: err.message });
+    }
+    next(err);
 });
 
 // Start server

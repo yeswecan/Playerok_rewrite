@@ -1,0 +1,92 @@
+{
+  "name": "main",
+  "items": [
+    {
+      "index": 0,
+      "filename": "2.mov",
+      "previewFilename": "2_preview.jpg",
+      "outgoingCommands": [
+        "start_lights",
+        "play_music"
+      ],
+      "ingoingCommands": [],
+      "isPartOfLoop": true
+    },
+    {
+      "index": 1,
+      "filename": "1.mov",
+      "previewFilename": "1_preview.jpg",
+      "outgoingCommands": [
+        "start_show"
+      ],
+      "ingoingCommands": [
+        "play_intro"
+      ],
+      "isPartOfLoop": true
+    },
+    {
+      "index": 2,
+      "filename": "7.mov",
+      "previewFilename": "7_preview.jpg",
+      "outgoingCommands": [],
+      "ingoingCommands": [],
+      "isPartOfLoop": false
+    },
+    {
+      "index": 3,
+      "filename": "3.mov",
+      "previewFilename": "3_preview.jpg",
+      "outgoingCommands": [],
+      "ingoingCommands": [],
+      "isPartOfLoop": true
+    },
+    {
+      "index": 4,
+      "filename": "5.mov",
+      "previewFilename": "5_preview.jpg",
+      "outgoingCommands": [],
+      "ingoingCommands": [],
+      "isPartOfLoop": true
+    },
+    {
+      "index": 5,
+      "filename": "6.mov",
+      "previewFilename": "6_preview.jpg",
+      "outgoingCommands": [],
+      "ingoingCommands": [],
+      "isPartOfLoop": false
+    },
+    {
+      "index": 6,
+      "filename": "4.mov",
+      "previewFilename": "4_preview.jpg",
+      "outgoingCommands": [],
+      "ingoingCommands": [],
+      "isPartOfLoop": true
+    },
+    {
+      "index": 7,
+      "filename": "output.mp4",
+      "previewFilename": "output_preview.jpg",
+      "outgoingCommands": [],
+      "ingoingCommands": [],
+      "isPartOfLoop": false
+    },
+    {
+      "index": 8,
+      "filename": "2_copy.mov",
+      "previewFilename": "2_copy_preview.jpg",
+      "outgoingCommands": [],
+      "ingoingCommands": [],
+      "isPartOfLoop": false
+    },
+    {
+      "index": 9,
+      "filename": "IMG_5189.mov",
+      "previewFilename": "IMG_5189_preview.jpg",
+      "outgoingCommands": [],
+      "ingoingCommands": [],
+      "isPartOfLoop": false
+    }
+  ]
+}
