@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Modal from '../components/test_Modal';
 
-const API_URL = 'http://192.168.1.5:3000'; // Change from localhost to IP
+const API_URL = 'http://localhost:3000'; // Change from localhost to IP
 
 const PlaylistsPage = () => {
   const [playlists, setPlaylists] = useState([]);
@@ -59,21 +59,25 @@ const PlaylistsPage = () => {
     if (!newPlaylistName.trim()) return;
 
     try {
-      const response = await fetch(`${API_URL}/api/addToPlaylist/${newPlaylistName}`, {
+      // Create a new empty playlist
+      const response = await fetch(`${API_URL}/api/createPlaylist/${newPlaylistName}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ filename: '', isPartOfLoop: false }),
+        }
       });
       
-      if (response.ok) {
-        setIsAddModalOpen(false);
-        setNewPlaylistName('');
-        fetchPlaylists();
+      if (!response.ok) {
+        throw new Error(`Failed to create playlist: ${response.statusText}`);
       }
+
+      console.log('Created new playlist:', newPlaylistName);
+      setIsAddModalOpen(false);
+      setNewPlaylistName('');
+      await fetchPlaylists(); // Wait for the playlists to be fetched
     } catch (error) {
       console.error('Error creating playlist:', error);
+      setError(`Failed to create playlist: ${error.message}`);
     }
   };
 

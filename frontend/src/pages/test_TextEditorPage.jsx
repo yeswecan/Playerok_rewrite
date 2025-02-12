@@ -7,19 +7,19 @@ import Modal from '../components/test_Modal';
 const HIGHLIGHT_DICTIONARY = {
   'react': { 
     description: 'A JavaScript library for building user interfaces',
-    tooltip: 'React.js - Build amazing UIs'
+    hint: 'React.js - Build amazing UIs'
   },
   'quill': { 
     description: 'A modern WYSIWYG editor built for compatibility and extensibility',
-    tooltip: 'Quill.js - Rich text editing'
+    hint: 'Quill.js - Rich text editing'
   },
   'editor': { 
     description: 'A program for editing and manipulating text',
-    tooltip: 'Text Editor - Create and modify content'
+    hint: 'Text Editor - Create and modify content'
   },
   'highlight': { 
     description: 'To emphasize or make prominent',
-    tooltip: 'Highlight - Draw attention to text'
+    hint: 'Highlight - Draw attention to text'
   }
 };
 
@@ -30,42 +30,44 @@ const TextEditorPage = () => {
   const [content, setContent] = useState(DEFAULT_CONTENT);
   const [selectedWord, setSelectedWord] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [hint, setHint] = useState({ visible: false, text: '', x: 0, y: 0 });
   const quillRef = useRef(null);
+  const highlightTimeoutRef = useRef(null);
 
-  // Function to highlight all matching words
   const highlightWords = useCallback(() => {
     const editor = quillRef.current?.getEditor();
     if (!editor) return;
 
-    const text = editor.getText();
-    const selection = editor.getSelection();
+    // Clear previous timeout if it exists
+    if (highlightTimeoutRef.current) {
+      clearTimeout(highlightTimeoutRef.current);
+    }
 
-    // Remove all existing highlights
+    // Store current selection
+    const selection = editor.getSelection();
+    const text = editor.getText();
+
+    // Remove existing highlights
     editor.formatText(0, text.length, 'background', false);
 
-    // Find and highlight all dictionary words
-    Object.keys(HIGHLIGHT_DICTIONARY).forEach(dictWord => {
-      let startIndex = 0;
+    // Add new highlights
+    Object.keys(HIGHLIGHT_DICTIONARY).forEach(word => {
+      let index = 0;
       const lowerText = text.toLowerCase();
-      const lowerDictWord = dictWord.toLowerCase();
+      const lowerWord = word.toLowerCase();
 
-      while (true) {
-        const index = lowerText.indexOf(lowerDictWord, startIndex);
-        if (index === -1) break;
-
-        // Check if it's a whole word
+      while ((index = lowerText.indexOf(lowerWord, index)) !== -1) {
         const prevChar = index > 0 ? lowerText[index - 1] : ' ';
-        const nextChar = index + dictWord.length < lowerText.length ? 
-          lowerText[index + dictWord.length] : ' ';
+        const nextChar = index + word.length < lowerText.length ? 
+          lowerText[index + word.length] : ' ';
 
         if (!/[a-zA-Z0-9]/.test(prevChar) && !/[a-zA-Z0-9]/.test(nextChar)) {
-          const tooltip = HIGHLIGHT_DICTIONARY[dictWord].tooltip;
-          editor.formatText(index, dictWord.length, { 
+          editor.formatText(index, word.length, { 
             background: '#FFE082',
-            'data-tooltip': tooltip
+            'data-word': word
           });
         }
-        startIndex = index + 1;
+        index += word.length;
       }
     });
 
@@ -75,115 +77,117 @@ const TextEditorPage = () => {
     }
   }, []);
 
-  // Set up Quill modules
-  const modules = {
-    toolbar: [
-      [{ 'header': [1, 2, false] }],
-      ['bold', 'italic', 'underline', 'strike'],
-      [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-      ['clean']
-    ],
-    keyboard: {
-      bindings: {
-        tab: false
-      }
-    }
-  };
-
-  // Handle text changes
   const handleChange = useCallback((value) => {
     setContent(value);
+    
+    // Clear previous timeout
+    if (highlightTimeoutRef.current) {
+      clearTimeout(highlightTimeoutRef.current);
+    }
+    
+    // Set new timeout for highlighting
+    highlightTimeoutRef.current = setTimeout(highlightWords, 100);
+  }, [highlightWords]);
+
+  const handleMouseOver = useCallback((e) => {
+    const target = e.target;
+    if (!target || target.tagName !== 'SPAN') return;
+
+    const bgColor = target.style.backgroundColor;
+    const isHighlighted = bgColor === 'rgb(255, 224, 130)' || bgColor === '#ffe082';
+    
+    if (isHighlighted) {
+      const word = target.textContent.toLowerCase().trim();
+      const hintText = HIGHLIGHT_DICTIONARY[word]?.hint;
+      
+      if (hintText) {
+        const rect = target.getBoundingClientRect();
+        setHint({
+          visible: true,
+          text: hintText,
+          x: rect.left + (rect.width / 2),
+          y: rect.top
+        });
+      }
+    }
   }, []);
 
-  // Initialize editor and set up event handlers
+  const handleMouseOut = useCallback((e) => {
+    const target = e.target;
+    const relatedTarget = e.relatedTarget;
+    
+    // Only hide hint if we're not moving to another highlighted word
+    if (!relatedTarget || relatedTarget.tagName !== 'SPAN' || 
+        !relatedTarget.style.backgroundColor.includes('255, 224, 130')) {
+      setHint(prev => ({ ...prev, visible: false }));
+    }
+  }, []);
+
   useEffect(() => {
     const editor = quillRef.current?.getEditor();
     if (!editor) return;
 
-    // Apply initial highlights
+    // Initial highlight
     highlightWords();
 
-    // Set up text change handler
-    const textChangeHandler = () => {
-      setTimeout(highlightWords, 0);
-    };
+    const editorRoot = editor.root;
+    editorRoot.addEventListener('mouseover', handleMouseOver);
+    editorRoot.addEventListener('mouseout', handleMouseOut);
 
-    editor.on('text-change', textChangeHandler);
-
-    // Set up click handler for highlighted words
-    const editorElement = editor.root;
-    const clickHandler = (e) => {
-      const target = e.target;
-      const style = window.getComputedStyle(target);
-      if (style.backgroundColor === 'rgb(255, 224, 130)') { // #FFE082
-        const word = target.textContent.toLowerCase().trim();
-        if (HIGHLIGHT_DICTIONARY[word]) {
-          setSelectedWord(word);
-          setIsModalOpen(true);
-        }
-      }
-    };
-
-    editorElement.addEventListener('click', clickHandler);
-
-    // Cleanup
     return () => {
-      editor.off('text-change', textChangeHandler);
-      editorElement.removeEventListener('click', clickHandler);
+      if (highlightTimeoutRef.current) {
+        clearTimeout(highlightTimeoutRef.current);
+      }
+      editorRoot.removeEventListener('mouseover', handleMouseOver);
+      editorRoot.removeEventListener('mouseout', handleMouseOut);
     };
-  }, [highlightWords]);
-
-  const formats = [
-    'header',
-    'bold', 'italic', 'underline', 'strike',
-    'list', 'bullet',
-    'background'
-  ];
+  }, [highlightWords, handleMouseOver, handleMouseOut]);
 
   return (
     <div className="container mx-auto p-6">
       <h1 className="text-2xl font-bold mb-4">Enhanced Text Editor</h1>
+      
+      {hint.visible && (
+        <div
+          style={{
+            position: 'fixed',
+            left: `${hint.x}px`,
+            top: `${hint.y - 28}px`,
+            transform: 'translate(-50%, -100%)',
+            backgroundColor: '#FFE082',
+            padding: '4px 8px',
+            borderRadius: '4px',
+            fontSize: '12px',
+            zIndex: 1000,
+            pointerEvents: 'none',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+            opacity: hint.visible ? 1 : 0,
+            transition: 'opacity 0.15s ease-in-out'
+          }}
+        >
+          {hint.text}
+        </div>
+      )}
+
       <div className="bg-white rounded-lg shadow-md p-4">
         <style>
           {`
-            .ql-editor span[style*="background-color: rgb(255, 224, 130)"] {
+            .ql-editor span[style*="background-color: rgb(255, 224, 130)"],
+            .ql-editor span[style*="background-color: #ffe082"] {
               cursor: pointer;
               padding: 2px 4px;
               border-radius: 3px;
-              transition: all 0.2s ease;
-              position: relative;
+              background-color: #FFE082 !important;
+              will-change: transform, background-color;
+              transition: transform 0.15s ease-in-out;
             }
-            .ql-editor span[style*="background-color: rgb(255, 224, 130)"]:hover {
+
+            .ql-editor span[style*="background-color: rgb(255, 224, 130)"]:hover,
+            .ql-editor span[style*="background-color: #ffe082"]:hover {
               background-color: #FFA000 !important;
-              box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+              transform: scale(1.05);
             }
-            .ql-editor span[style*="background-color: rgb(255, 224, 130)"]:hover::before {
-              content: attr(data-tooltip);
-              position: absolute;
-              bottom: 100%;
-              left: 50%;
-              transform: translateX(-50%);
-              padding: 4px 8px;
-              background-color: #FFE082;
-              border-radius: 4px;
-              font-size: 12px;
-              white-space: nowrap;
-              margin-bottom: 4px;
-              box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-              z-index: 1000;
-            }
-            .ql-editor span[style*="background-color: rgb(255, 224, 130)"]:hover::after {
-              content: '';
-              position: absolute;
-              bottom: 100%;
-              left: 50%;
-              transform: translateX(-50%);
-              border-width: 4px;
-              border-style: solid;
-              border-color: #FFE082 transparent transparent transparent;
-              margin-bottom: 0px;
-              z-index: 1000;
-            }
+
             .ql-editor {
               min-height: 300px;
             }
@@ -193,10 +197,22 @@ const TextEditorPage = () => {
           ref={quillRef}
           value={content}
           onChange={handleChange}
-          modules={modules}
-          formats={formats}
           theme="snow"
-          preserveWhitespace
+          modules={{
+            toolbar: [
+              [{ 'header': [1, 2, false] }],
+              ['bold', 'italic', 'underline', 'strike'],
+              [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+              ['clean']
+            ]
+          }}
+          formats={[
+            'header',
+            'bold', 'italic', 'underline', 'strike',
+            'list', 'bullet',
+            'background',
+            'data-word'
+          ]}
         />
       </div>
 
