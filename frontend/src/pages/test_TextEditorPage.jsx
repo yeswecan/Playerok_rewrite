@@ -9,17 +9,77 @@ const HIGHLIGHT_DICTIONARY = {
     description: 'A JavaScript library for building user interfaces',
     hint: 'React.js - Build amazing UIs'
   },
+  'redux': {
+    description: 'A predictable state container for JavaScript apps',
+    hint: 'Redux - State management for React'
+  },
+  'router': {
+    description: 'A routing library for React applications',
+    hint: 'React Router - Navigation made easy'
+  },
   'quill': { 
     description: 'A modern WYSIWYG editor built for compatibility and extensibility',
     hint: 'Quill.js - Rich text editing'
+  },
+  'query': {
+    description: 'A data-fetching and state management library',
+    hint: 'React Query - Powerful data synchronization'
   },
   'editor': { 
     description: 'A program for editing and manipulating text',
     hint: 'Text Editor - Create and modify content'
   },
+  'element': {
+    description: 'A basic unit of UI in React applications',
+    hint: 'React Element - Building blocks of UI'
+  },
   'highlight': { 
     description: 'To emphasize or make prominent',
     hint: 'Highlight - Draw attention to text'
+  },
+  'hook': {
+    description: 'A function that lets you use state and other React features',
+    hint: 'React Hook - Function-based state management'
+  },
+  'component': {
+    description: 'A reusable piece of UI in React',
+    hint: 'React Component - Building blocks of applications'
+  },
+  'state': {
+    description: 'Data that can change over time in React',
+    hint: 'React State - Dynamic data management'
+  },
+  'props': {
+    description: 'Properties passed to React components',
+    hint: 'React Props - Component configuration'
+  },
+  'effect': {
+    description: 'Side effects in React components',
+    hint: 'React Effect - Handle side effects'
+  },
+  'context': {
+    description: 'Global state management in React',
+    hint: 'React Context - Share data between components'
+  },
+  'reducer': {
+    description: 'A function that determines state changes',
+    hint: 'Redux Reducer - State update logic'
+  },
+  'action': {
+    description: 'A description of state changes in Redux',
+    hint: 'Redux Action - Trigger state updates'
+  },
+  'middleware': {
+    description: 'Functions that intercept Redux actions',
+    hint: 'Redux Middleware - Custom action handling'
+  },
+  'selector': {
+    description: 'Functions to extract data from Redux state',
+    hint: 'Redux Selector - Access state data'
+  },
+  'dispatch': {
+    description: 'Function to send actions to Redux store',
+    hint: 'Redux Dispatch - Trigger state changes'
   }
 };
 
@@ -31,26 +91,43 @@ const TextEditorPage = () => {
   const [selectedWord, setSelectedWord] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [hint, setHint] = useState({ visible: false, text: '', x: 0, y: 0 });
+  const [suggestions, setSuggestions] = useState({ visible: false, items: [], highlightedItems: [], x: 0, y: 0 });
+  const [selectedIndex, setSelectedIndex] = useState(0);
   const quillRef = useRef(null);
   const highlightTimeoutRef = useRef(null);
+
+  const getCurrentWord = useCallback(() => {
+    const editor = quillRef.current?.getEditor();
+    if (!editor) return '';
+
+    const selection = editor.getSelection();
+    if (!selection) return '';
+
+    const text = editor.getText();
+    const cursorPosition = selection.index;
+    
+    let start = cursorPosition;
+    while (start > 0 && /[a-zA-Z]/.test(text[start - 1])) {
+      start--;
+    }
+    
+    let end = cursorPosition;
+    while (end < text.length && /[a-zA-Z]/.test(text[end])) {
+      end++;
+    }
+
+    return text.slice(start, end);
+  }, []);
 
   const highlightWords = useCallback(() => {
     const editor = quillRef.current?.getEditor();
     if (!editor) return;
 
-    // Clear previous timeout if it exists
-    if (highlightTimeoutRef.current) {
-      clearTimeout(highlightTimeoutRef.current);
-    }
-
-    // Store current selection
     const selection = editor.getSelection();
     const text = editor.getText();
 
-    // Remove existing highlights
     editor.formatText(0, text.length, 'background', false);
 
-    // Add new highlights
     Object.keys(HIGHLIGHT_DICTIONARY).forEach(word => {
       let index = 0;
       const lowerText = text.toLowerCase();
@@ -62,16 +139,12 @@ const TextEditorPage = () => {
           lowerText[index + word.length] : ' ';
 
         if (!/[a-zA-Z0-9]/.test(prevChar) && !/[a-zA-Z0-9]/.test(nextChar)) {
-          editor.formatText(index, word.length, { 
-            background: '#FFE082',
-            'data-word': word
-          });
+          editor.formatText(index, word.length, { background: '#FFE082' });
         }
         index += word.length;
       }
     });
 
-    // Restore selection
     if (selection) {
       editor.setSelection(selection);
     }
@@ -80,14 +153,138 @@ const TextEditorPage = () => {
   const handleChange = useCallback((value) => {
     setContent(value);
     
-    // Clear previous timeout
+    const editor = quillRef.current?.getEditor();
+    if (!editor) return;
+
     if (highlightTimeoutRef.current) {
       clearTimeout(highlightTimeoutRef.current);
     }
+
+    const currentWord = getCurrentWord();
+    const selection = editor.getSelection();
+    if (!selection) return;
+
+    const bounds = editor.getBounds(selection.index);
+    const editorBounds = editor.root.getBoundingClientRect();
+
+    // Show suggestions only when there's a current word
+    if (!currentWord) {
+      setSuggestions(prev => ({ ...prev, visible: false }));
+      return;
+    }
+
+    // Show all words but highlight matching ones
+    const allWords = Object.keys(HIGHLIGHT_DICTIONARY);
+    const matchingWords = currentWord ? 
+      allWords.filter(word => word.toLowerCase().startsWith(currentWord.toLowerCase())) : 
+      [];
+
+    setSuggestions({
+      visible: true,
+      items: allWords, // Show all words
+      highlightedItems: matchingWords, // Highlight only matching ones
+      x: bounds.left + editorBounds.left,
+      y: bounds.top + editorBounds.top - 5
+    });
     
-    // Set new timeout for highlighting
+    // Set selected index to the first matching word if exists, otherwise first word
+    const firstMatchIndex = allWords.findIndex(word => 
+      matchingWords.includes(word)
+    );
+    setSelectedIndex(firstMatchIndex >= 0 ? firstMatchIndex : 0);
+
+    // Delay highlighting to avoid performance issues
     highlightTimeoutRef.current = setTimeout(highlightWords, 100);
-  }, [highlightWords]);
+  }, [getCurrentWord, highlightWords]);
+
+  const handleSelectionChange = useCallback((range) => {
+    if (!range) {
+      setSuggestions(prev => ({ ...prev, visible: false }));
+      return;
+    }
+  }, []);
+
+  const handleKeyDown = useCallback((e) => {
+    if (!suggestions.visible) return true;
+
+    const editor = quillRef.current?.getEditor();
+    if (!editor) return true;
+
+    switch (e.key) {
+      case 'ArrowUp':
+      case 'ArrowDown': {
+        // Stop the event immediately
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        
+        const delta = e.key === 'ArrowUp' ? -1 : 1;
+        setSelectedIndex(prev => {
+          const newIndex = (prev + delta + suggestions.items.length) % suggestions.items.length;
+          const element = document.getElementById(`suggestion-${newIndex}`);
+          if (element) {
+            const container = element.parentElement;
+            const elementRect = element.getBoundingClientRect();
+            const containerRect = container.getBoundingClientRect();
+            
+            if (elementRect.top < containerRect.top || elementRect.bottom > containerRect.bottom) {
+              element.scrollIntoView({
+                block: delta < 0 ? 'end' : 'start',
+                behavior: 'auto'
+              });
+            }
+          }
+          return newIndex;
+        });
+        return false;
+      }
+
+      case 'Enter': {
+        // Stop the event immediately
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+
+        const selection = editor.getSelection();
+        if (!selection) return false;
+
+        const text = editor.getText();
+        const cursorPosition = selection.index;
+        
+        let start = cursorPosition;
+        while (start > 0 && /[a-zA-Z]/.test(text[start - 1])) {
+          start--;
+        }
+
+        const selectedWord = suggestions.items[selectedIndex];
+        const formats = editor.getFormat(start, cursorPosition - start);
+        
+        // Delete and insert atomically to prevent cursor jumping
+        editor.deleteText(start, cursorPosition - start, 'user');
+        editor.insertText(start, selectedWord, formats, 'user');
+        editor.insertText(start + selectedWord.length, ' ', formats, 'user');
+        editor.setSelection(start + selectedWord.length + 1, 0, 'user');
+        
+        setSuggestions(prev => ({ ...prev, visible: false }));
+        
+        // Prevent any default handling
+        return false;
+      }
+
+      case 'Escape':
+        setSuggestions(prev => ({ ...prev, visible: false }));
+        return false;
+
+      case ' ':
+        if (!getCurrentWord()) {
+          setSuggestions(prev => ({ ...prev, visible: false }));
+        }
+        return true;
+
+      default:
+        return true;
+    }
+  }, [suggestions.visible, suggestions.items, selectedIndex, getCurrentWord]);
 
   const handleMouseOver = useCallback((e) => {
     const target = e.target;
@@ -116,7 +313,6 @@ const TextEditorPage = () => {
     const target = e.target;
     const relatedTarget = e.relatedTarget;
     
-    // Only hide hint if we're not moving to another highlighted word
     if (!relatedTarget || relatedTarget.tagName !== 'SPAN' || 
         !relatedTarget.style.backgroundColor.includes('255, 224, 130')) {
       setHint(prev => ({ ...prev, visible: false }));
@@ -127,21 +323,26 @@ const TextEditorPage = () => {
     const editor = quillRef.current?.getEditor();
     if (!editor) return;
 
-    // Initial highlight
+    // Initial highlighting
     highlightWords();
 
-    const editorRoot = editor.root;
-    editorRoot.addEventListener('mouseover', handleMouseOver);
-    editorRoot.addEventListener('mouseout', handleMouseOut);
+    // Add keyboard event listener directly to the editor element
+    const editorElement = editor.root;
+    editorElement.addEventListener('keydown', handleKeyDown, { capture: true });
+    editor.on('selection-change', handleSelectionChange);
+    editorElement.addEventListener('mouseover', handleMouseOver);
+    editorElement.addEventListener('mouseout', handleMouseOut);
 
     return () => {
       if (highlightTimeoutRef.current) {
         clearTimeout(highlightTimeoutRef.current);
       }
-      editorRoot.removeEventListener('mouseover', handleMouseOver);
-      editorRoot.removeEventListener('mouseout', handleMouseOut);
+      editorElement.removeEventListener('keydown', handleKeyDown, { capture: true });
+      editor.off('selection-change', handleSelectionChange);
+      editorElement.removeEventListener('mouseover', handleMouseOver);
+      editorElement.removeEventListener('mouseout', handleMouseOut);
     };
-  }, [highlightWords, handleMouseOver, handleMouseOut]);
+  }, [highlightWords, handleKeyDown, handleMouseOver, handleMouseOut, handleSelectionChange]);
 
   return (
     <div className="container mx-auto p-6">
@@ -191,6 +392,42 @@ const TextEditorPage = () => {
             .ql-editor {
               min-height: 300px;
             }
+
+            /* Add styles for suggestion items */
+            .group:last-child {
+              border-bottom: none !important;
+            }
+
+            .group:hover {
+              background-color: #EBF5FF !important;
+            }
+
+            .group:hover span {
+              color: #1a56db !important;
+            }
+
+            .bg-blue-50 span {
+              color: #1a56db !important;
+            }
+
+            /* Scrollbar styles */
+            .suggestions-menu::-webkit-scrollbar {
+              width: 8px;
+            }
+
+            .suggestions-menu::-webkit-scrollbar-track {
+              background: #E2E8F0;
+              border-radius: 4px;
+            }
+
+            .suggestions-menu::-webkit-scrollbar-thumb {
+              background: #94A3B8;
+              border-radius: 4px;
+            }
+
+            .suggestions-menu::-webkit-scrollbar-thumb:hover {
+              background: #64748B;
+            }
           `}
         </style>
         <ReactQuill
@@ -210,10 +447,119 @@ const TextEditorPage = () => {
             'header',
             'bold', 'italic', 'underline', 'strike',
             'list', 'bullet',
-            'background',
-            'data-word'
+            'background'
           ]}
         />
+      </div>
+
+      {suggestions.visible && (
+        <div
+          style={{
+            position: 'fixed',
+            left: `${suggestions.x}px`,
+            top: `${suggestions.y}px`,
+            transform: 'translateY(-100%)',
+            backgroundColor: 'white',
+            borderRadius: '4px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+            zIndex: 1000,
+            minWidth: '250px',
+            maxHeight: '160px',
+            overflowY: 'auto',
+            scrollbarWidth: 'thin',
+            scrollbarColor: '#94A3B8 #E2E8F0'
+          }}
+          className="suggestions-menu"
+        >
+          {suggestions.items.map((word, index) => {
+            const isHighlighted = suggestions.highlightedItems.includes(word);
+            const isSelected = index === selectedIndex;
+            return (
+              <div
+                id={`suggestion-${index}`}
+                key={word}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const editor = quillRef.current?.getEditor();
+                  if (!editor) return;
+
+                  const selection = editor.getSelection();
+                  if (!selection) return;
+
+                  const text = editor.getText();
+                  const cursorPosition = selection.index;
+                  
+                  let start = cursorPosition;
+                  while (start > 0 && /[a-zA-Z]/.test(text[start - 1])) {
+                    start--;
+                  }
+
+                  editor.deleteText(start, cursorPosition - start);
+                  editor.insertText(start, word + ' ');
+                  editor.setSelection(start + word.length + 1, 0);
+                  setSuggestions(prev => ({ ...prev, visible: false }));
+                }}
+                onMouseEnter={() => setSelectedIndex(index)}
+                style={{
+                  padding: '8px',
+                  cursor: 'pointer',
+                  backgroundColor: isSelected ? '#EBF5FF' : 'white',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  borderBottom: '1px solid #eee',
+                  transition: 'all 0.15s ease-in-out',
+                  position: 'relative'
+                }}
+                className={`group hover:bg-blue-50 ${isSelected ? 'bg-blue-50' : ''}`}
+              >
+                {isSelected && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      left: '0',
+                      top: '0',
+                      bottom: '0',
+                      width: '3px',
+                      backgroundColor: '#2563EB',
+                      borderRadius: '2px'
+                    }}
+                  />
+                )}
+                <span style={{ 
+                  backgroundColor: isHighlighted ? '#FFE082' : 'transparent',
+                  padding: '2px 6px',
+                  borderRadius: '4px',
+                  flex: '0 0 auto',
+                  transition: 'all 0.15s ease-in-out'
+                }}>
+                  {word}
+                </span>
+                <span className={`text-sm flex-1 ${isSelected ? 'text-blue-700' : 'text-gray-600'} group-hover:text-blue-700`}>
+                  {HIGHLIGHT_DICTIONARY[word].hint}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="mt-4 space-y-2">
+        <div className="text-sm text-gray-600">
+          Available words:
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {Object.keys(HIGHLIGHT_DICTIONARY).map(word => (
+            <span
+              key={word}
+              style={{ backgroundColor: '#FFE082' }}
+              className="px-2 py-1 rounded"
+            >
+              {word}
+            </span>
+          ))}
+        </div>
       </div>
 
       <Modal
@@ -225,27 +571,6 @@ const TextEditorPage = () => {
           <p>{selectedWord && HIGHLIGHT_DICTIONARY[selectedWord]?.description}</p>
         </div>
       </Modal>
-
-      <div className="mt-4 space-y-2">
-        <div className="text-sm text-gray-600">
-          Available highlighted words:
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {Object.keys(HIGHLIGHT_DICTIONARY).map(word => (
-            <span
-              key={word}
-              style={{ backgroundColor: '#FFE082' }}
-              className="cursor-pointer px-2 py-1 rounded transition-colors hover:bg-[#FFD54F]"
-              onClick={() => {
-                setSelectedWord(word);
-                setIsModalOpen(true);
-              }}
-            >
-              {word}
-            </span>
-          ))}
-        </div>
-      </div>
     </div>
   );
 };
