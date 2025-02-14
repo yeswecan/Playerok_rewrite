@@ -114,6 +114,30 @@ app.delete('/api/removePlaylist/:name', async (req, res) => {
     }
 });
 
+// Create a new empty playlist
+app.post('/api/createPlaylist/:name', async (req, res) => {
+    try {
+        const playlistPath = path.join(PLAYLISTS_DIR, `${req.params.name}.json`);
+        
+        // Check if playlist already exists
+        try {
+            await fs.access(playlistPath);
+            return res.status(400).json({ error: 'Playlist already exists' });
+        } catch (err) {
+            // File doesn't exist, we can proceed
+        }
+
+        // Create a new empty playlist
+        const playlist = new Playlist(req.params.name);
+        await playlist.save(playlistPath);
+        
+        res.status(201).json(playlist);
+    } catch (error) {
+        console.error('Error creating playlist:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Add item to playlist
 app.post('/api/addToPlaylist/:name', async (req, res) => {
     try {
@@ -248,6 +272,21 @@ app.post('/api/upload', upload.single('video'), async (req, res) => {
         console.error('Error uploading file:', error);
         res.status(500).json({ error: error.message });
     }
+});
+
+// Mock endpoint for getting currently playing track
+// In production, this would be connected to the actual player
+app.get('/api/getCurrentTrack', async (req, res) => {
+  try {
+    const files = await fs.readdir(PLAYLISTS_DIR);
+    if (files.length === 0) return res.json({ filename: null });
+    
+    const firstPlaylist = await Playlist.load(path.join(PLAYLISTS_DIR, files[0]));
+    const currentTrack = firstPlaylist.items[1] || firstPlaylist.items[0] || null;
+    res.json({ filename: currentTrack ? currentTrack.filename : null });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // Error handler for multer errors
