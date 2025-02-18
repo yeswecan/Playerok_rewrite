@@ -84,7 +84,7 @@ const HIGHLIGHT_DICTIONARY = {
 };
 
 // Default content with dictionary words
-const DEFAULT_CONTENT = `This is a React-based text editor using Quill. You can highlight specific words in this editor. Try typing or editing this text to see how the highlighting works.`;
+const DEFAULT_CONTENT = `Edit input or output actions here`;
 
 const TextEditorPage = () => {
   const [content, setContent] = useState(DEFAULT_CONTENT);
@@ -183,10 +183,10 @@ const TextEditorPage = () => {
 
     setSuggestions({
       visible: true,
-      items: allWords, // Show all words
-      highlightedItems: matchingWords, // Highlight only matching ones
+      items: allWords,
+      highlightedItems: matchingWords,
       x: bounds.left + editorBounds.left,
-      y: bounds.top + editorBounds.top - 5
+      y: bounds.bottom + editorBounds.top + 5  // Position below the cursor
     });
     
     // Only set selected index to first match if not manually navigating
@@ -365,7 +365,7 @@ const TextEditorPage = () => {
           style={{
             position: 'fixed',
             left: `${hint.x}px`,
-            top: `${hint.y - 28}px`,
+            top: `${hint.y - 5}px`,
             transform: 'translate(-50%, -100%)',
             backgroundColor: '#FFE082',
             padding: '4px 8px',
@@ -385,6 +385,21 @@ const TextEditorPage = () => {
       <div className="bg-white rounded-lg shadow-md p-4">
         <style>
           {`
+            .ql-editor {
+              min-height: 38px !important;
+              max-height: 38px !important;
+              padding: 8px !important;
+              overflow: hidden !important;
+            }
+
+            .ql-container {
+              border: none !important;
+            }
+
+            .ql-toolbar {
+              display: none !important;
+            }
+
             .ql-editor span[style*="background-color: rgb(255, 224, 130)"],
             .ql-editor span[style*="background-color: #ffe082"] {
               cursor: pointer;
@@ -399,10 +414,6 @@ const TextEditorPage = () => {
             .ql-editor span[style*="background-color: #ffe082"]:hover {
               background-color: #FFA000 !important;
               transform: scale(1.05);
-            }
-
-            .ql-editor {
-              min-height: 300px;
             }
 
             /* Add styles for suggestion items */
@@ -448,19 +459,15 @@ const TextEditorPage = () => {
           onChange={handleChange}
           theme="snow"
           modules={{
-            toolbar: [
-              [{ 'header': [1, 2, false] }],
-              ['bold', 'italic', 'underline', 'strike'],
-              [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-              ['clean']
-            ]
+            toolbar: false
           }}
           formats={[
-            'header',
-            'bold', 'italic', 'underline', 'strike',
-            'list', 'bullet',
             'background'
           ]}
+          style={{
+            height: '38px',
+            overflow: 'hidden'
+          }}
         />
       </div>
 
@@ -470,7 +477,7 @@ const TextEditorPage = () => {
             position: 'fixed',
             left: `${suggestions.x}px`,
             top: `${suggestions.y}px`,
-            transform: 'translateY(-100%)',
+            transform: 'none',  // Remove the transform that was moving it up
             backgroundColor: 'white',
             borderRadius: '4px',
             boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
