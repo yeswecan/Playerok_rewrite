@@ -93,6 +93,7 @@ const TextEditorPage = () => {
   const [hint, setHint] = useState({ visible: false, text: '', x: 0, y: 0 });
   const [suggestions, setSuggestions] = useState({ visible: false, items: [], highlightedItems: [], x: 0, y: 0 });
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [isManuallyNavigating, setIsManuallyNavigating] = useState(false);
   const quillRef = useRef(null);
   const highlightTimeoutRef = useRef(null);
 
@@ -170,6 +171,7 @@ const TextEditorPage = () => {
     // Show suggestions only when there's a current word
     if (!currentWord) {
       setSuggestions(prev => ({ ...prev, visible: false }));
+      setIsManuallyNavigating(false);
       return;
     }
 
@@ -187,15 +189,17 @@ const TextEditorPage = () => {
       y: bounds.top + editorBounds.top - 5
     });
     
-    // Set selected index to the first matching word if exists, otherwise first word
-    const firstMatchIndex = allWords.findIndex(word => 
-      matchingWords.includes(word)
-    );
-    setSelectedIndex(firstMatchIndex >= 0 ? firstMatchIndex : 0);
+    // Only set selected index to first match if not manually navigating
+    if (!isManuallyNavigating) {
+      const firstMatchIndex = allWords.findIndex(word => 
+        matchingWords.includes(word)
+      );
+      setSelectedIndex(firstMatchIndex >= 0 ? firstMatchIndex : 0);
+    }
 
     // Delay highlighting to avoid performance issues
     highlightTimeoutRef.current = setTimeout(highlightWords, 100);
-  }, [getCurrentWord, highlightWords]);
+  }, [getCurrentWord, highlightWords, isManuallyNavigating]);
 
   const handleSelectionChange = useCallback((range) => {
     if (!range) {
@@ -213,27 +217,20 @@ const TextEditorPage = () => {
     switch (e.key) {
       case 'ArrowUp':
       case 'ArrowDown': {
-        // Stop the event immediately
         e.preventDefault();
         e.stopPropagation();
         e.stopImmediatePropagation();
+        setIsManuallyNavigating(true);
         
         const delta = e.key === 'ArrowUp' ? -1 : 1;
         setSelectedIndex(prev => {
           const newIndex = (prev + delta + suggestions.items.length) % suggestions.items.length;
-          const element = document.getElementById(`suggestion-${newIndex}`);
-          if (element) {
-            const container = element.parentElement;
-            const elementRect = element.getBoundingClientRect();
-            const containerRect = container.getBoundingClientRect();
-            
-            if (elementRect.top < containerRect.top || elementRect.bottom > containerRect.bottom) {
-              element.scrollIntoView({
-                block: delta < 0 ? 'end' : 'start',
-                behavior: 'auto'
-              });
+          requestAnimationFrame(() => {
+            const element = document.getElementById(`suggestion-${newIndex}`);
+            if (element) {
+              element.scrollIntoView({ block: 'nearest', behavior: 'auto' });
             }
-          }
+          });
           return newIndex;
         });
         return false;
@@ -266,6 +263,7 @@ const TextEditorPage = () => {
         editor.setSelection(start + selectedWord.length + 1, 0, 'user');
         
         setSuggestions(prev => ({ ...prev, visible: false }));
+        setIsManuallyNavigating(false);
         
         // Prevent any default handling
         return false;
@@ -273,15 +271,18 @@ const TextEditorPage = () => {
 
       case 'Escape':
         setSuggestions(prev => ({ ...prev, visible: false }));
+        setIsManuallyNavigating(false);
         return false;
 
       case ' ':
         if (!getCurrentWord()) {
           setSuggestions(prev => ({ ...prev, visible: false }));
+          setIsManuallyNavigating(false);
         }
         return true;
 
       default:
+        setIsManuallyNavigating(false);
         return true;
     }
   }, [suggestions.visible, suggestions.items, selectedIndex, getCurrentWord]);
@@ -326,9 +327,20 @@ const TextEditorPage = () => {
     // Initial highlighting
     highlightWords();
 
-    // Add keyboard event listener directly to the editor element
+    const handleKeyDownCapture = (e) => {
+      if (!suggestions.visible) return;
+
+      const result = handleKeyDown(e);
+      if (result === false) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+      }
+    };
+
     const editorElement = editor.root;
-    editorElement.addEventListener('keydown', handleKeyDown, { capture: true });
+    editorElement.addEventListener('keydown', handleKeyDownCapture, { capture: true });
+    
     editor.on('selection-change', handleSelectionChange);
     editorElement.addEventListener('mouseover', handleMouseOver);
     editorElement.addEventListener('mouseout', handleMouseOut);
@@ -337,12 +349,12 @@ const TextEditorPage = () => {
       if (highlightTimeoutRef.current) {
         clearTimeout(highlightTimeoutRef.current);
       }
-      editorElement.removeEventListener('keydown', handleKeyDown, { capture: true });
+      editorElement.removeEventListener('keydown', handleKeyDownCapture, { capture: true });
       editor.off('selection-change', handleSelectionChange);
       editorElement.removeEventListener('mouseover', handleMouseOver);
       editorElement.removeEventListener('mouseout', handleMouseOut);
     };
-  }, [highlightWords, handleKeyDown, handleMouseOver, handleMouseOut, handleSelectionChange]);
+  }, [highlightWords, handleKeyDown, handleMouseOver, handleMouseOut, handleSelectionChange, suggestions.visible]);
 
   return (
     <div className="container mx-auto p-6">
@@ -467,9 +479,11 @@ const TextEditorPage = () => {
             maxHeight: '160px',
             overflowY: 'auto',
             scrollbarWidth: 'thin',
-            scrollbarColor: '#94A3B8 #E2E8F0'
+            scrollbarColor: '#94A3B8 #E2E8F0',
+            outline: 'none'
           }}
           className="suggestions-menu"
+          tabIndex={-1}
         >
           {suggestions.items.map((word, index) => {
             const isHighlighted = suggestions.highlightedItems.includes(word);
