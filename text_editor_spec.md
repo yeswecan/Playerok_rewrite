@@ -137,4 +137,4 @@ This is a test implementation. For production use:
 1. Dictionary should be loaded from external source
 2. Component should be embedded in main editor page
 3. Styling should match parent application
-4. Additional configuration options may be needed 
+4. Additional configuration options may be needed
