@@ -153,14 +153,62 @@ const PlaylistEditorPage = () => {
     }
   };
 
-  const handleMoveItem = async (fromIndex, toIndex) => {
+  const handleMoveItem = async (fromIndex, toIndex, shouldToggleLoop = false) => {
     try {
-      await fetch(`${API_URL}/api/moveItem/${name}/${fromIndex}/${toIndex}`, {
+      console.log(`Moving item from index ${fromIndex} to index ${toIndex}, toggle loop: ${shouldToggleLoop}`);
+      
+      // First move the item to its new position
+      const moveResponse = await fetch(`${API_URL}/api/moveItem/${name}/${fromIndex}/${toIndex}`, {
         method: 'POST',
       });
-      fetchPlaylist();
+
+      if (!moveResponse.ok) {
+        throw new Error(`Failed to move item: ${moveResponse.statusText}`);
+      }
+      
+      // If we need to toggle the loop status, do it after moving the item
+      if (shouldToggleLoop) {
+        console.log(`Toggling loop status for item at index ${toIndex}`);
+        
+        const toggleResponse = await fetch(`${API_URL}/api/toggleLoop/${name}/${toIndex}`, {
+          method: 'POST',
+        });
+
+        if (!toggleResponse.ok) {
+          throw new Error(`Failed to toggle loop status: ${toggleResponse.statusText}`);
+        }
+      }
+      
+      // Refresh the playlist to show the updated order and status
+      await fetchPlaylist();
+      console.log('Playlist refreshed after move and toggle operations');
     } catch (error) {
-      console.error('Error moving item:', error);
+      console.error('Error moving/updating item:', error);
+      // Show the error to the user
+      setError(`Failed to update playlist: ${error.message}`);
+      // Fetch the playlist again to restore the correct state
+      fetchPlaylist();
+    }
+  };
+
+  const handleToggleLoop = async (index) => {
+    try {
+      console.log(`Toggling loop status for item at index ${index}`);
+      
+      const toggleResponse = await fetch(`${API_URL}/api/toggleLoop/${name}/${index}`, {
+        method: 'POST',
+      });
+
+      if (!toggleResponse.ok) {
+        throw new Error(`Failed to toggle loop status: ${toggleResponse.statusText}`);
+      }
+      
+      // Refresh the playlist to show the updated status
+      await fetchPlaylist();
+    } catch (error) {
+      console.error('Error toggling loop status:', error);
+      setError(`Failed to toggle loop status: ${error.message}`);
+      fetchPlaylist();
     }
   };
 
@@ -274,9 +322,13 @@ const PlaylistEditorPage = () => {
   const transformItems = (items) => {
     if (!items) return [];
     
+    console.log('Transforming items:', items);
+    
     // Separate items into two lists
     const loopedItems = items.filter(item => item.isPartOfLoop);
     const interactiveItems = items.filter(item => !item.isPartOfLoop);
+    
+    console.log(`Found ${loopedItems.length} looped items and ${interactiveItems.length} interactive items`);
     
     // Transform looped items with their own index sequence
     const transformedLooped = loopedItems.map((item, idx) => ({
@@ -377,7 +429,7 @@ const PlaylistEditorPage = () => {
         <DraggableList
           items={transformItems(playlist.items)}
           onItemMove={handleMoveItem}
-          onItemLoopToggle={(index) => handleUpdateItem(index, { isPartOfLoop: true })}
+          onItemLoopToggle={handleToggleLoop}
           onItemClick={(item) => {
             setSelectedTrack(item);
             setIsTrackModalOpen(true);

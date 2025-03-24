@@ -1,213 +1,411 @@
-import React from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import PropTypes from 'prop-types';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
-import { motion, LayoutGroup } from 'framer-motion';
+import { Checkbox } from './ui/checkbox';
+import { cn } from '../utils';
+import { GripVertical } from 'lucide-react';
 
 const DraggableList = ({ items, onItemMove, onItemLoopToggle, onItemClick }) => {
-  const lists = {
-    idleTracks: items.filter(item => item.isPartOfLoop),
-    interactiveTracks: items.filter(item => !item.isPartOfLoop)
-  };
+  // Track if we're currently in a drag operation
+  const isDragging = useRef(false);
+  // Track if we're in a checkbox-triggered animation
+  const isAnimating = useRef(false);
+  // Store the current animation frame request
+  const animationRef = useRef(null);
 
-  // Handle reordering within the same list or moving between lists
-  const onDragEnd = ({ source, destination }) => {
-    if (!destination) return;
+  const checkedItems = items.filter((item) => item.isPartOfLoop);
+  const uncheckedItems = items.filter((item) => !item.isPartOfLoop);
 
-    console.log('=== Drag Operation Debug Info ===');
+  // Refs to store the DOM elements
+  const itemRefs = useRef({});
+  const listRefs = useRef({
+    "checked-list": null,
+    "unchecked-list": null,
+  });
+
+  function handleDragStart() {
+    isDragging.current = true;
+  }
+
+  function handleDragEnd(result) {
+    if (!result.destination) {
+      isDragging.current = false;
+      return;
+    }
+
+    const { source, destination } = result;
     
-    // First, get a clear picture of the current state
-    const allItemsSorted = [...items].sort((a, b) => a.originalIndex - b.originalIndex);
-    console.log('All Items in Order:', allItemsSorted.map(item => ({
-      filename: item.filename,
-      originalIndex: item.originalIndex,
-      isLoop: item.isPartOfLoop
-    })));
-
+    console.log('Drag end event:', {
+      source: { droppableId: source.droppableId, index: source.index },
+      destination: { droppableId: destination.droppableId, index: destination.index }
+    });
+    
+    // Find the item being dragged
     const sourceKey = source.droppableId;
     const destKey = destination.droppableId;
-    const sourceItems = lists[sourceKey];
-    const destItems = lists[destKey];
-
-    // Get the actual item being moved
+    
+    const sourceItems = sourceKey === "checked-list" ? checkedItems : uncheckedItems;
+    const destItems = destKey === "checked-list" ? checkedItems : uncheckedItems;
+    
     const sourceItem = sourceItems[source.index];
-    console.log('Moving Item Details:', {
+    
+    if (!sourceItem) {
+      isDragging.current = false;
+      return;
+    }
+
+    console.log('Moving item:', {
+      id: sourceItem.id,
       filename: sourceItem.filename,
-      listPosition: source.index, // Position in source list (0-based)
-      uiIndex: sourceItem.index, // UI display index (1-based)
-      originalIndex: sourceItem.originalIndex, // Global index
-      isLoop: sourceItem.isPartOfLoop,
-      movingTo: {
-        list: destKey,
-        position: destination.index
-      }
+      originalIndex: sourceItem.originalIndex,
+      isPartOfLoop: sourceItem.isPartOfLoop
     });
 
-    // Get all items in their current lists (excluding the moving item)
-    const currentLoopedItems = items
-      .filter(item => item.isPartOfLoop && item.originalIndex !== sourceItem.originalIndex)
-      .sort((a, b) => a.originalIndex - b.originalIndex);
+    // Determine if we're changing checked status (moving between lists)
+    const isSwitchingLists = sourceKey !== destKey;
+    const newIsPartOfLoop = destKey === "checked-list";
     
-    const currentInteractiveItems = items
-      .filter(item => !item.isPartOfLoop && item.originalIndex !== sourceItem.originalIndex)
-      .sort((a, b) => a.originalIndex - b.originalIndex);
-
-    console.log('Current Lists State:', {
-      looped: currentLoopedItems.map(i => ({
-        filename: i.filename,
-        originalIndex: i.originalIndex,
-        uiIndex: i.index
-      })),
-      interactive: currentInteractiveItems.map(i => ({
-        filename: i.filename,
-        originalIndex: i.originalIndex,
-        uiIndex: i.index
-      }))
-    });
-
+    // Get the original index to pass to the move handler
+    const originalIndex = sourceItem.originalIndex;
+    
     // Calculate the target index based on the destination
-    let targetOriginalIndex;
-    const targetItems = destKey === 'idleTracks' ? currentLoopedItems : currentInteractiveItems;
-
-    if (targetItems.length === 0) {
-      // If target list is empty, find the first available index
-      const usedIndices = new Set(items.map(item => item.originalIndex));
-      targetOriginalIndex = 0;
-      while (usedIndices.has(targetOriginalIndex)) targetOriginalIndex++;
-      
-      console.log('Moving to Empty List:', {
-        targetOriginalIndex,
-        reason: 'First available index'
-      });
-    } else if (destination.index === 0) {
-      // Moving to start of list - insert before first item
-      targetOriginalIndex = Math.max(0, targetItems[0].originalIndex - 1);
-      console.log('Moving to Start:', {
-        targetOriginalIndex,
-        firstItem: targetItems[0].filename,
-        firstItemIndex: targetItems[0].originalIndex
-      });
-    } else if (destination.index >= targetItems.length) {
-      // Moving to end of list - insert after last item
-      const lastItem = targetItems[targetItems.length - 1];
-      targetOriginalIndex = lastItem.originalIndex + 1;
-      console.log('Moving to End:', {
-        targetOriginalIndex,
-        lastItem: lastItem.filename,
-        lastItemIndex: lastItem.originalIndex
-      });
-    } else {
-      // Moving between items - insert between them
-      const beforeItem = targetItems[destination.index - 1];
-      const afterItem = targetItems[destination.index];
-      targetOriginalIndex = afterItem.originalIndex;
-      
-      // Shift all items after this point
-      const itemsToShift = items.filter(item => 
-        item.originalIndex >= targetOriginalIndex && 
-        item.originalIndex !== sourceItem.originalIndex
-      );
-      
-      console.log('Moving Between Items:', {
-        targetOriginalIndex,
-        beforeItem: {
-          filename: beforeItem.filename,
-          index: beforeItem.originalIndex
-        },
-        afterItem: {
-          filename: afterItem.filename,
-          index: afterItem.originalIndex
-        },
-        itemsToShift: itemsToShift.map(i => i.filename)
-      });
-    }
-
-    console.log('Final Move Operation:', {
-      item: sourceItem.filename,
-      fromIndex: sourceItem.originalIndex,
-      toIndex: targetOriginalIndex,
-      fromList: sourceKey,
-      toList: destKey,
-      shouldToggleLoop: sourceKey !== destKey
-    });
-    console.log('========================');
-
-    // First move the item
-    onItemMove(sourceItem.originalIndex, targetOriginalIndex);
+    let targetIndex;
     
-    // Then toggle loop status if moving between lists
-    if (sourceKey !== destKey) {
-      setTimeout(() => {
-        onItemLoopToggle(sourceItem.originalIndex);
-      }, 0);
+    if (isSwitchingLists) {
+      // Moving between different lists
+      if (destKey === "checked-list") {
+        // Moving from unchecked to checked list (lower to upper)
+        if (destination.index === 0) {
+          // Moving to beginning of checked list
+          targetIndex = 0;
+        } else if (destination.index >= checkedItems.length) {
+          // Moving to end of checked list
+          targetIndex = checkedItems.length > 0 
+            ? checkedItems[checkedItems.length - 1].originalIndex + 1
+            : 0;
+        } else {
+          // Moving to specific position in checked list
+          targetIndex = checkedItems[destination.index].originalIndex;
+        }
+      } else {
+        // Moving from checked to unchecked list (upper to lower)
+        if (uncheckedItems.length === 0) {
+          // If there are no unchecked items yet, place at the end
+          targetIndex = items.length;
+        } else if (destination.index === 0) {
+          // Moving to beginning of unchecked list
+          // This needs special handling to ensure it goes to the first position in the unchecked list
+          targetIndex = uncheckedItems[0].originalIndex;
+          
+          // If the item being moved is before the first unchecked item,
+          // we need to adjust to ensure it really goes first
+          if (originalIndex < targetIndex) {
+            targetIndex--;
+          }
+        } else if (destination.index >= uncheckedItems.length) {
+          // Moving to end of unchecked list
+          targetIndex = items.length;
+        } else {
+          // Moving to specific position in unchecked list
+          targetIndex = uncheckedItems[destination.index].originalIndex;
+          
+          // If the item being moved is before the target position,
+          // adjust to ensure correct placement
+          if (originalIndex < targetIndex) {
+            targetIndex--;
+          }
+        }
+      }
+    } else {
+      // Moving within the same list
+      if (sourceKey === "checked-list") {
+        // Moving within checked list
+        if (destination.index >= checkedItems.length) {
+          // Moving to end of checked list
+          targetIndex = checkedItems.length - 1 >= 0
+            ? checkedItems[checkedItems.length - 1].originalIndex
+            : 0;
+        } else {
+          // Moving to specific position in checked list
+          targetIndex = checkedItems[destination.index].originalIndex;
+          
+          // Adjust for when moving forward in the same list
+          if (source.index < destination.index && originalIndex < targetIndex) {
+            targetIndex--;
+          }
+        }
+      } else {
+        // Moving within unchecked list
+        if (destination.index >= uncheckedItems.length) {
+          // Moving to end of unchecked list
+          targetIndex = items.length - 1;
+        } else {
+          // Moving to specific position in unchecked list
+          targetIndex = uncheckedItems[destination.index].originalIndex;
+          
+          // Adjust for when moving forward in the same list
+          if (source.index < destination.index && originalIndex < targetIndex) {
+            targetIndex--;
+          }
+        }
+      }
     }
-  };
+    
+    console.log(`Calculated target index: ${targetIndex} (from original index ${originalIndex})`);
+    
+    // Only make the API call if we have valid indices
+    if (originalIndex !== undefined && targetIndex !== undefined) {
+      // For switching lists, always toggle the loop status
+      const shouldToggleLoop = isSwitchingLists;
+      
+      onItemMove(originalIndex, targetIndex, shouldToggleLoop);
+    }
 
-  // A generic container for either list with a title
-  const ListContainer = ({ id, items, title }) => (
-    <div className="bg-white rounded-lg shadow-md p-4 mb-6">
-      <h2 className="text-xl font-semibold mb-4 text-gray-800">{title}</h2>
-      <Droppable droppableId={id}>
-        {(provided) => (
-          <div
-            {...provided.droppableProps}
-            ref={provided.innerRef}
-            className="flex flex-col gap-3"
-          >
-            {items.map((item, index) => (
-              <Draggable key={item.id} draggableId={item.id} index={index}>
-                {(provided, snapshot) => (
-                  <motion.div
-                    layoutId={snapshot.isDragging ? '' : item.id}
-                    ref={provided.innerRef}
-                    {...provided.draggableProps}
-                    {...provided.dragHandleProps}
-                    className={`
-                      relative p-4 rounded-lg 
-                      bg-white shadow-sm
-                      border border-gray-200
-                      ${snapshot.isDragging ? 'shadow-xl ring-2 ring-blue-500' : ''}
-                    `}
-                    transition={{ type: 'spring', stiffness: 350, damping: 25 }}
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="text-gray-600 w-8">{item.index}</span>
-                      <span className="ml-1"><i>loop:</i></span>
-                      <motion.input
-                        type="checkbox"
-                        checked={item.isPartOfLoop}
-                        onChange={() => onItemLoopToggle(item.originalIndex)}
-                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                        onClick={e => e.stopPropagation()}
-                        whileTap={{ scale: 0.9 }}
-                      />
-                      <button
-                        onClick={() => onItemClick(item.originalData)}
-                        className="text-gray-700 hover:text-blue-600 flex items-center"
-                      >
-                        {item.isPlaying && <span className="mr-2">▶️</span>}
-                        <span className="ml-1"><i>Filename:  </i></span>
-                        {item.filename}
-                      </button>
-                    </div>
-                  </motion.div>
-                )}
-              </Draggable>
-            ))}
-            {provided.placeholder}
-          </div>
-        )}
-      </Droppable>
-    </div>
-  );
+    // Reset dragging state
+    setTimeout(() => {
+      isDragging.current = false;
+    }, 50);
+  }
+
+  const handleCheckboxChange = useCallback((id) => {
+    if (isDragging.current || isAnimating.current) return;
+
+    // Find the item
+    const item = items.find((item) => item.id === id);
+    if (!item) return;
+
+    // Get the DOM elements
+    const itemElement = itemRefs.current[id];
+    const sourceList = listRefs.current[item.isPartOfLoop ? "checked-list" : "unchecked-list"];
+    const targetList = listRefs.current[item.isPartOfLoop ? "unchecked-list" : "checked-list"];
+
+    if (!itemElement || !sourceList || !targetList) {
+      // If we can't find elements, just update directly
+      onItemLoopToggle(item.originalIndex);
+      return;
+    }
+
+    // Mark that we're animating
+    isAnimating.current = true;
+
+    // Create a clone for animation
+    const clone = itemElement.cloneNode(true);
+    const sourceRect = itemElement.getBoundingClientRect();
+    const targetRect = targetList.getBoundingClientRect();
+
+    // Position clone absolutely
+    clone.style.position = "fixed";
+    clone.style.top = `${sourceRect.top}px`;
+    clone.style.left = `${sourceRect.left}px`;
+    clone.style.width = `${sourceRect.width}px`;
+    clone.style.height = `${sourceRect.height}px`;
+    clone.style.margin = "0";
+    clone.style.zIndex = "9999";
+    clone.style.transition = "all 300ms cubic-bezier(0.4, 0.0, 0.2, 1.0)";
+    clone.style.pointerEvents = "none";
+
+    // Add clone to body
+    document.body.appendChild(clone);
+
+    // Hide original item
+    itemElement.style.opacity = "0";
+
+    // Create placeholder in target list
+    const targetPlaceholder = document.createElement("div");
+    targetPlaceholder.style.height = "0";
+    targetPlaceholder.style.overflow = "hidden";
+    targetPlaceholder.style.transition = "height 300ms cubic-bezier(0.4, 0.0, 0.2, 1.0)";
+    targetPlaceholder.style.backgroundColor = "rgba(0, 0, 0, 0.05)";
+    targetPlaceholder.style.borderRadius = "6px";
+    targetPlaceholder.style.margin = "0 0 8px 0";
+
+    // Create placeholder in source list
+    const sourcePlaceholder = document.createElement("div");
+    sourcePlaceholder.style.height = `${sourceRect.height}px`;
+    sourcePlaceholder.style.overflow = "hidden";
+    sourcePlaceholder.style.transition = "height 300ms cubic-bezier(0.4, 0.0, 0.2, 1.0)";
+    sourcePlaceholder.style.backgroundColor = "rgba(0, 0, 0, 0.05)";
+    sourcePlaceholder.style.borderRadius = "6px";
+    sourcePlaceholder.style.margin = "0 0 8px 0";
+
+    // Replace original item with source placeholder
+    itemElement.parentNode?.insertBefore(sourcePlaceholder, itemElement);
+    itemElement.style.display = "none";
+
+    // Add target placeholder to target list
+    targetList.insertBefore(targetPlaceholder, targetList.firstChild);
+
+    // Force reflow
+    targetPlaceholder.offsetHeight;
+    sourcePlaceholder.offsetHeight;
+
+    // Expand target and shrink source
+    targetPlaceholder.style.height = `${sourceRect.height}px`;
+    sourcePlaceholder.style.height = "0";
+
+    // Calculate target position
+    const targetY = targetRect.top;
+
+    // Animate clone
+    requestAnimationFrame(() => {
+      clone.style.transform = `translateY(${targetY - sourceRect.top}px)`;
+      clone.style.opacity = "0.8";
+
+      // After animation completes
+      setTimeout(() => {
+        // Remove clone and placeholders
+        clone.remove();
+        targetPlaceholder.remove();
+        sourcePlaceholder.remove();
+
+        // Restore original item
+        if (itemElement) {
+          itemElement.style.opacity = "1";
+          itemElement.style.display = "";
+        }
+
+        // Update through parent handler - always toggle here since that's the checkbox's purpose
+        onItemLoopToggle(item.originalIndex);
+
+        // Reset animation flag
+        isAnimating.current = false;
+      }, 300);
+    });
+  }, [items, onItemLoopToggle]);
 
   return (
     <div className="p-1 max-w-3xl mx-auto">
-      <LayoutGroup>
-        <DragDropContext onDragEnd={onDragEnd}>
-          <ListContainer id="idleTracks" items={lists.idleTracks} title="Idle mode tracks" />
-          <ListContainer id="interactiveTracks" items={lists.interactiveTracks} title="Interactive tracks" />
-        </DragDropContext>
-      </LayoutGroup>
+      <DragDropContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+        <div className="space-y-6">
+          {/* Idle tracks list (checked items) */}
+          <div className="bg-white rounded-lg shadow-md p-4 mb-6">
+            <h2 className="text-xl font-semibold mb-3">Idle mode tracks</h2>
+            <Droppable droppableId="checked-list" isDropDisabled={isAnimating.current}>
+              {(provided, snapshot) => (
+                <ul
+                  {...provided.droppableProps}
+                  ref={(el) => {
+                    provided.innerRef(el);
+                    listRefs.current["checked-list"] = el;
+                  }}
+                  className={cn(
+                    "min-h-[100px]",
+                    snapshot.isDraggingOver && "bg-blue-50 border-2 border-blue-200 rounded-md",
+                    checkedItems.length === 0 && !snapshot.isDraggingOver && "border-2 border-dashed border-gray-300 rounded-md"
+                  )}
+                >
+                  {checkedItems.map((item, index) => (
+                    <Draggable 
+                      key={item.id} 
+                      draggableId={item.id} 
+                      index={index} 
+                      isDragDisabled={isAnimating.current}
+                    >
+                      {(provided, snapshot) => (
+                        <li
+                          ref={(el) => {
+                            provided.innerRef(el);
+                            itemRefs.current[item.id] = el;
+                          }}
+                          {...provided.draggableProps}
+                          className={cn(
+                            "p-3 mb-2 bg-white rounded-md border flex items-center gap-3",
+                            snapshot.isDragging && "shadow-lg ring-2 ring-blue-500 bg-blue-50"
+                          )}
+                        >
+                          <div {...provided.dragHandleProps} className="cursor-grab active:cursor-grabbing">
+                            <GripVertical className="w-4 h-4 text-gray-400" />
+                          </div>
+                          <Checkbox
+                            id={`check-${item.id}`}
+                            checked={item.isPartOfLoop}
+                            onCheckedChange={() => handleCheckboxChange(item.id)}
+                            disabled={isAnimating.current}
+                          />
+                          <label 
+                            htmlFor={`check-${item.id}`} 
+                            className="flex-1 cursor-pointer text-gray-700 flex items-center"
+                            onClick={() => onItemClick(item.originalData)}
+                          >
+                            <span className="text-gray-600 w-8 mr-2">{item.index}</span>
+                            {item.isPlaying && <span className="mr-2">▶️</span>}
+                            {item.filename}
+                          </label>
+                        </li>
+                      )}
+                    </Draggable>
+                  ))}
+                  {provided.placeholder}
+                </ul>
+              )}
+            </Droppable>
+          </div>
+
+          {/* Interactive tracks list (unchecked items) */}
+          <div className="bg-white rounded-lg shadow-md p-4">
+            <h2 className="text-xl font-semibold mb-3">Interactive tracks</h2>
+            <Droppable droppableId="unchecked-list" isDropDisabled={isAnimating.current}>
+              {(provided, snapshot) => (
+                <ul
+                  {...provided.droppableProps}
+                  ref={(el) => {
+                    provided.innerRef(el);
+                    listRefs.current["unchecked-list"] = el;
+                  }}
+                  className={cn(
+                    "min-h-[100px]",
+                    snapshot.isDraggingOver && "bg-blue-50 border-2 border-blue-200 rounded-md",
+                    uncheckedItems.length === 0 && !snapshot.isDraggingOver && "border-2 border-dashed border-gray-300 rounded-md"
+                  )}
+                >
+                  {uncheckedItems.map((item, index) => (
+                    <Draggable 
+                      key={item.id} 
+                      draggableId={item.id} 
+                      index={index} 
+                      isDragDisabled={isAnimating.current}
+                    >
+                      {(provided, snapshot) => (
+                        <li
+                          ref={(el) => {
+                            provided.innerRef(el);
+                            itemRefs.current[item.id] = el;
+                          }}
+                          {...provided.draggableProps}
+                          className={cn(
+                            "p-3 mb-2 bg-white rounded-md border flex items-center gap-3",
+                            snapshot.isDragging && "shadow-lg ring-2 ring-blue-500 bg-blue-50"
+                          )}
+                        >
+                          <div {...provided.dragHandleProps} className="cursor-grab active:cursor-grabbing">
+                            <GripVertical className="w-4 h-4 text-gray-400" />
+                          </div>
+                          <Checkbox
+                            id={`check-${item.id}`}
+                            checked={item.isPartOfLoop}
+                            onCheckedChange={() => handleCheckboxChange(item.id)}
+                            disabled={isAnimating.current}
+                          />
+                          <label 
+                            htmlFor={`check-${item.id}`} 
+                            className="flex-1 cursor-pointer text-gray-700 flex items-center"
+                            onClick={() => onItemClick(item.originalData)}
+                          >
+                            <span className="text-gray-600 w-8 mr-2">{item.index}</span>
+                            {item.isPlaying && <span className="mr-2">▶️</span>}
+                            {item.filename}
+                          </label>
+                        </li>
+                      )}
+                    </Draggable>
+                  ))}
+                  {provided.placeholder}
+                </ul>
+              )}
+            </Droppable>
+          </div>
+        </div>
+      </DragDropContext>
     </div>
   );
 };
@@ -219,6 +417,7 @@ DraggableList.propTypes = {
     index: PropTypes.number.isRequired,
     isPartOfLoop: PropTypes.bool.isRequired,
     isPlaying: PropTypes.bool.isRequired,
+    originalIndex: PropTypes.number.isRequired,
     originalData: PropTypes.object.isRequired
   })).isRequired,
   onItemMove: PropTypes.func.isRequired,
