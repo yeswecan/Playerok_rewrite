@@ -6,6 +6,7 @@ import { Node, mergeAttributes, Extension } from '@tiptap/core';
 import { ChevronDown } from 'lucide-react';
 import SuggestionList from './SuggestionList.jsx';
 import { TextSelection } from '@tiptap/pm/state';
+import { Plugin, PluginKey } from 'prosemirror-state';
 
 // --- Hint Context ---
 export const HintContext = createContext({
@@ -95,11 +96,26 @@ const ActionNode = Node.create({
 
 // --- React Component for the Action Node View ---
 // Wrap with forwardRef
-const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selected, getPos }, ref) => {
+const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selected, getPos, deleteNode }, ref) => {
   const [isOpen, setIsOpen] = useState(false);
+  const originalWordRef = useRef(node.textContent);
   const { qualifier, nodeId } = node.attrs;
-  const { showHint, hideHint, onActionWordChanged } = useContext(HintContext);
+  const { showHint, hideHint, onActionWordChanged, onActionDeleted } = useContext(HintContext);
   const wrapperRef = useRef(null);
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleClickOutside = (event) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen]);
 
   // Get qualifierOptions from props via context
   const { qualifierOptions } = useContext(HintContext);
@@ -120,11 +136,12 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
       e.preventDefault();
       e.stopPropagation();
       // Update React state immediately
-      setIsOpen(false); 
+      setIsOpen(false);
       // Delay the Tiptap attribute update slightly
       setTimeout(() => {
           handleQualifierChange(id);
-      }, 0); 
+          onQualifierChanged(nodeId, id);
+      }, 0);
   };
 
   const handleMouseEnter = () => {
@@ -141,7 +158,8 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
   const handleContentBlur = (event) => {
       const currentWord = node.textContent;
       console.log(`ActionNode Blur: Node ID '${nodeId}', New Word: '${currentWord}'`);
-      if (nodeId && currentWord) {
+      if (nodeId && currentWord && currentWord !== originalWordRef.current) {
+          console.log(`Word changed for node ${nodeId}: '${originalWordRef.current}' -> '${currentWord}'`);
           onActionWordChanged(nodeId, currentWord);
       }
   };
@@ -157,10 +175,14 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
             ref={ref}
             className="action-word-content px-1.5 py-0.5 rounded-l bg-yellow-200"
             onBlur={handleContentBlur}
+            onFocus={() => {
+                originalWordRef.current = node.textContent;
+                console.log(`ActionNode Focus: Node ID '${nodeId}', Original Word: '${originalWordRef.current}'`);
+            }}
         />
         <button
             onClick={toggleDropdown}
-            className="flex items-center px-1 py-0.5 bg-yellow-200 border-l border-yellow-300 rounded-r hover:bg-yellow-300 transition-colors"
+            className="flex items-center px-1 py-0.5 bg-yellow-200 border-l border-yellow-300 hover:bg-yellow-300 transition-colors"
             aria-haspopup="true"
             aria-expanded={isOpen}
         >
@@ -180,6 +202,16 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
                 ))}
             </div>
         )}
+        <button
+          onClick={() => {
+            deleteNode();
+            onActionDeleted(node.attrs.nodeId);
+          }}
+          className="flex items-center justify-center px-1 py-0.5 bg-yellow-300 hover:bg-yellow-400 text-gray-800 border-l border-yellow-300 rounded-r transition-colors"
+          title="Delete action"
+        >
+          ×
+        </button>
     </NodeViewWrapper>
   );
 });
@@ -191,79 +223,84 @@ const WordSuggestionExtension = Extension.create({
   addOptions() {
     return {
       getSuggestionState: () => ({ visible: false }),
-      setSuggestionState: () => {},
       requestCoordUpdate: () => {},
       registeredActions: [],
       defaultQualifier: null,
       editorContainerRef: { current: null },
+      requestStateUpdate: (reason) => { console.log('[WordSuggestionExtension] requestStateUpdate called:', reason); },
     };
   },
 
+  addProseMirrorPlugins() {
+    const ext = this;
+    return [
+      new Plugin({
+        key: new PluginKey('wordSuggestionPlugin'),
+        state: {
+          init(_, instance) {
+            return {
+              active: false,
+              range: null,
+              query: '',
+              prevRange: null,
+              prevQuery: '',
+              justConvertedExplicitOrSpace: false,
+            };
+          },
+          apply(tr, prev, oldState, newState) {
+            const meta = tr.getMeta('wordSuggestionPlugin') || {};
+            const next = { ...prev };
+
+            // Reset explicit/space conversion flag if transaction is not marked as such
+            if (!meta.justConvertedExplicitOrSpace) {
+              next.justConvertedExplicitOrSpace = false;
+            }
+
+            // Save previous active context if it was active
+            if (prev.active) {
+              next.prevRange = prev.range;
+              next.prevQuery = prev.query;
+            }
+
+            // Default: inactive
+            next.active = false;
+            next.range = null;
+            next.query = '';
+
+            const { selection } = newState;
+            if (
+              selection.empty &&
+              selection.$from.parent.type.name !== 'actionNode'
+            ) {
+              const $from = selection.$from;
+              const textBefore = $from.parent.textBetween(0, $from.parentOffset, undefined, '\ufffc');
+              const match = textBefore.match(/(\S+)$/);
+              if (match) {
+                const word = match[1];
+                const end = $from.pos;
+                const start = end - word.length;
+                next.active = true;
+                next.range = { from: start, to: end };
+                next.query = word;
+              }
+            }
+
+            return next;
+          },
+        },
+        props: {},
+      }),
+    ];
+  },
+
   onFocus({ editor }) {
-    console.log('[WordSuggestionExtension:onFocus] Fired. (No state change triggered here)');
+    console.log('[WordSuggestionExtension:onFocus] Fired.');
+    this.options.requestStateUpdate('focus');
   },
 
   onUpdate({ editor }) {
     console.log('[WordSuggestionExtension:onUpdate] Fired.');
-    const { getSuggestionState, setSuggestionState, registeredActions } = this.options;
-    const currentState = getSuggestionState();
-
-    if (!currentState.visible) {
-        console.log('[WordSuggestionExtension:onUpdate] Menu not visible, skipping query processing.');
-        return;
-    }
-
-    const { selection } = editor.state;
-    const { $from } = selection;
-
-    if (!selection.empty) {
-        return;
-    }
-
-    // Get text before cursor in the current text node (or block)
-    const textBeforeCursor = $from.parent.textBetween(0, $from.parentOffset, ' ', '\ufffc');
-
-    // Find the start of the word: last space or start of the text block
-    const lastSpaceIndex = textBeforeCursor.lastIndexOf(' ');
-    const query = textBeforeCursor.substring(lastSpaceIndex + 1);
-    // --- End Improved Query Extraction ---
-
-    console.log('[WordSuggestionExtension:onUpdate] Detected Query:', query);
-
-    if (!query || query.trim().length === 0) {
-        setSuggestionState(prev => ({
-            ...prev,
-            items: registeredActions,
-            highlightedItems: [],
-            selectedIndex: 0,
-            query: '',
-        }));
-        return;
-    }
-
-    const highlighted = registeredActions.filter(word => word.toLowerCase().startsWith(query.toLowerCase()));
-    
-    // Find index of the first highlighted item in the original list
-    const firstHighlightedIndex = highlighted.length > 0 
-        ? registeredActions.findIndex(item => item.toLowerCase() === highlighted[0].toLowerCase())
-        : -1;
-
-    // Update state: Set selectedIndex to the first highlighted item, or 0 if none
-    setSuggestionState(prev => {
-      const newState = {
-        ...prev,
-        items: registeredActions,
-        highlightedItems: highlighted,
-        selectedIndex: firstHighlightedIndex !== -1 ? firstHighlightedIndex : 0, // Select first highlighted or default to 0
-        query: query,
-      };
-      console.log('[WordSuggestionExtension:onUpdate] Setting highlight state:', {
-          highlighted: newState.highlightedItems,
-          selectedIndex: newState.selectedIndex,
-          query: newState.query,
-      });
-      return newState;
-    });
+    this.options.requestStateUpdate('update');
   },
 
   addKeyboardShortcuts() {
@@ -281,6 +318,9 @@ const WordSuggestionExtension = Extension.create({
       'Enter': () => {
         console.log('[WordSuggestionExtension:Enter] Emitting event.');
         this.editor.emit('suggestion:select');
+        // Mark transaction to avoid implicit conversion
+        const tr = this.editor.state.tr.setMeta('wordSuggestionPlugin', { justConvertedExplicitOrSpace: true });
+        this.editor.view.dispatch(tr);
         return true;
       },
       'Escape': () => {
@@ -288,46 +328,62 @@ const WordSuggestionExtension = Extension.create({
         this.editor.emit('suggestion:close');
         return true;
       },
+      'Space': () => {
+        const { state } = this.editor;
+        const { selection } = state;
+
+        if (!selection.empty || selection.$from.parent.type.name === 'actionNode') {
+          return false;
+        }
+
+        const textBefore = selection.$from.parent.textBetween(
+          Math.max(0, selection.$from.parentOffset - 50),
+          selection.$from.parentOffset,
+          ' ',
+          '\ufffc'
+        );
+
+        const match = textBefore.match(/(\S+)$/);
+        if (match) {
+          const word = match[1];
+          const end = selection.$from.pos;
+          const start = end - word.length;
+
+          const nodeContent = [{
+            type: this.editor.schema.nodes.actionNode.name,
+            attrs: { qualifier: this.options.defaultQualifier },
+            content: [{ type: 'text', text: word }]
+          }];
+
+          this.editor.chain().focus().insertContentAt({ from: start, to: end }, nodeContent).run();
+
+          const posAfterNode = this.editor.state.selection.to;
+
+          this.editor.chain().focus().insertContentAt(posAfterNode, ' ').run();
+
+          this.editor.emit('action-created-implicit', { word, qualifier: this.options.defaultQualifier });
+
+          // Mark transaction to avoid implicit conversion on blur/move
+          const tr = this.editor.state.tr.setMeta('wordSuggestionPlugin', { justConvertedExplicitOrSpace: true });
+          this.editor.view.dispatch(tr);
+
+          return true;
+        }
+
+        return false;
+      },
     };
   },
 
   onSelectionUpdate({ editor }) {
     console.log('[WordSuggestionExtension:onSelectionUpdate] Fired.');
-    const { getSuggestionState, setSuggestionState, requestCoordUpdate } = this.options;
-    const { selection } = editor.state;
-    
-    // Check if the parent node of the selection is an actionNode
-    const isInsideActionNodeContent = selection.$head.parent.type.name === 'actionNode';
-    const isEmptySelection = selection.empty;
-    const currentState = getSuggestionState();
-
-    // Determine if the menu should be visible
-    // Visible only if selection is empty AND the cursor is NOT inside an ActionNode's content
-    const shouldBeVisible = isEmptySelection && !isInsideActionNodeContent;
-
-    if (shouldBeVisible) {
-        // Request coordinate update regardless of current visibility state
-        console.log('[WordSuggestionExtension:onSelectionUpdate] Selection valid, requesting coord update.');
-        requestCoordUpdate();
-
-        if (!currentState.visible) {
-            console.log('[WordSuggestionExtension:onSelectionUpdate] Setting visible=true.');
-            setSuggestionState(prev => ({ ...prev, visible: true }));
-        } else {
-            console.log('[WordSuggestionExtension:onSelectionUpdate] No visibility change needed (already visible).');
-        }
-    } else if (!shouldBeVisible && currentState.visible) {
-        console.log('[WordSuggestionExtension:onSelectionUpdate] Setting visible=false.');
-        setSuggestionState(prev => ({ ...prev, visible: false }));
-    } else {
-        console.log('[WordSuggestionExtension:onSelectionUpdate] No visibility change needed.');
-    }
+    this.options.requestStateUpdate('selection');
+    this.options.requestCoordUpdate();
   },
 
   onBlur({ editor }) {
-    console.log('[WordSuggestionExtension:onBlur] BLUR EVENT DETECTED! Setting visible=false');
-    const { setSuggestionState } = this.options;
-    setSuggestionState(prev => ({ ...prev, visible: false }));
+    console.log('[WordSuggestionExtension:onBlur] BLUR EVENT DETECTED!');
+    this.options.requestStateUpdate('blur');
   },
 });
 
@@ -382,6 +438,19 @@ const ActionEditorComponent = ({
 
   // Editor instance ref
   const [editorInstance, setEditorInstance] = useState(null);
+  // Listen for implicit action creation event
+  useEffect(() => {
+    if (!editorInstance) return;
+    const handleImplicitCreate = ({ word, qualifier }) => {
+      console.log(`[Implicit Action Create]: ${word}, ${qualifier}`);
+      onActionCreated(word, qualifier);
+    };
+    editorInstance.on('action-created-implicit', handleImplicitCreate);
+    return () => {
+      editorInstance.off('action-created-implicit', handleImplicitCreate);
+    };
+  }, [editorInstance, onActionCreated]);
+  
 
   // --- Callback for Extension to Request Coordinate Update ---
   const requestCoordUpdate = useCallback(() => {
@@ -393,11 +462,14 @@ const ActionEditorComponent = ({
   const wordSuggestionExtension = useMemo(() => {
     return WordSuggestionExtension.configure({
       getSuggestionState: () => suggestionStateRef.current,
-      setSuggestionState,
       requestCoordUpdate,
       registeredActions,
       defaultQualifier,
       editorContainerRef,
+      requestStateUpdate: (reason) => {
+        console.log('[ActionEditorComponent] requestStateUpdate called:', reason);
+        setCoordUpdateNonce(n => n + 1); // trigger React effect
+      },
     });
   }, [registeredActions, defaultQualifier, editorContainerRef, setSuggestionState, requestCoordUpdate]);
 
@@ -497,16 +569,31 @@ const ActionEditorComponent = ({
     console.log('[ActionEditorComponent:handleSelect] Running chain...');
     // chain.run(); // Don't run yet, add cursor positioning
 
-    // Explicitly set cursor position after insertion and add a space
-    chain
-      .setTextSelection(positionAfterInsertion) // Position cursor right after the node
-      .insertContent(' ') // Add a space after the node
+    // After initial insertion, get the updated position after the inserted node
+    chain.run();
+
+    const newPos = editorInstance.state.selection.to; // Position after inserted node
+    console.log('[ActionEditorComponent:handleSelect] Position after node insertion:', newPos);
+
+    // Insert a space after the node and move cursor after the space
+    editorInstance.chain().focus()
+      .insertContentAt(newPos, ' ')
+      .setTextSelection(newPos + 1)
       .run();
 
     // Now Update React State & Blur
     console.log('[ActionEditorComponent:handleSelect] Hiding menu and blurring...');
     setSuggestionState(prev => ({ ...prev, visible: false, query: '' })); // Reset query
     // Don't blur, keep focus for continued typing editorInstance?.commands.blur();
+
+    try {
+      if (typeof onActionCreated === 'function' && itemToInsert) {
+        console.log('[ActionEditorComponent:handleSelect] Calling onActionCreated callback');
+        onActionCreated(itemToInsert, defaultQualifier);
+      }
+    } catch (err) {
+      console.error('[ActionEditorComponent:handleSelect] Error in onActionCreated callback:', err);
+    }
 
     // Release lock AFTER all actions
     isSelectingRef.current = false;
@@ -534,6 +621,145 @@ const ActionEditorComponent = ({
       editor.off('suggestion:close', handleClose);
     };
   }, [editorInstance, handleNavUp, handleNavDown, handleSelect, handleClose]);
+  // --- Centralized suggestion state calculation ---
+  useEffect(() => {
+    if (!editorInstance || !editorContainerRef.current) {
+      console.warn('[Centralized useEffect] Editor instance or container ref missing.');
+      return;
+    }
+
+    const { state, isFocused, view } = editorInstance;
+    const { selection } = state;
+    const composing = view.composing;
+
+    // Access plugin state
+    const pluginKey = editorInstance.view.state.plugins.find(p => p.key?.key === 'wordSuggestionPlugin')?.key;
+    const pluginState = pluginKey ? pluginKey.getState(state) : null;
+
+    if (pluginState) {
+      const { active, range, query: currentQuery, prevRange, prevQuery, justConvertedExplicitOrSpace } = pluginState;
+
+      const movedOutOfPrev =
+        prevRange &&
+        (!active || !range || range.from !== prevRange.from || range.to !== prevRange.to);
+
+      if (
+        movedOutOfPrev &&
+        !justConvertedExplicitOrSpace &&
+        prevQuery &&
+        prevRange &&
+        prevRange.from != null &&
+        prevRange.to != null
+      ) {
+        console.log('[Centralized useEffect] Implicit conversion triggered on move/blur for word:', prevQuery);
+
+        const nodeContent = [{
+          type: editorInstance.state.schema.nodes.actionNode.name,
+          attrs: { qualifier: defaultQualifier },
+          content: [{ type: 'text', text: prevQuery }]
+        }];
+
+        const docSize = state.doc.content.size;
+        const from = Math.max(0, Math.min(prevRange.from, docSize));
+        const to = Math.max(0, Math.min(prevRange.to, docSize));
+
+        editorInstance.chain().focus().insertContentAt({ from, to }, nodeContent).run();
+
+        const posAfterNode = editorInstance.state.selection.to;
+        editorInstance.chain().focus().insertContentAt(posAfterNode, ' ').run();
+
+        onActionCreated(prevQuery, defaultQualifier);
+
+        const tr = editorInstance.state.tr.setMeta('wordSuggestionPlugin', { justConvertedExplicitOrSpace: true });
+        editorInstance.view.dispatch(tr);
+      }
+    }
+
+    let shouldBeVisible = false;
+    let query = '';
+    let highlightedItems = [];
+    let selectedIndex = 0;
+    let coords = null;
+
+    if (
+      isFocused &&
+      selection &&
+      selection.empty &&
+      selection.$head &&
+      selection.$head.parent.type.name !== 'actionNode' &&
+      !composing
+    ) {
+      shouldBeVisible = true;
+    }
+
+    if (shouldBeVisible) {
+      try {
+        const $from = selection.$from;
+        const textBefore = $from.parent.textBetween(0, $from.parentOffset, undefined, '\ufffc');
+        const match = textBefore.match(/(\S+)$/);
+        query = match ? match[1] : '';
+
+        highlightedItems = registeredActions.filter(item =>
+          item.toLowerCase().includes(query.toLowerCase())
+        );
+
+        selectedIndex = highlightedItems.length > 0 ? 0 : -1;
+
+        const pos = selection.$head.pos;
+        const absoluteCoords = view.coordsAtPos(pos);
+        const containerRect = editorContainerRef.current.getBoundingClientRect();
+
+        coords = {
+          x: absoluteCoords.left - containerRect.left,
+          y: absoluteCoords.bottom - containerRect.top - 30,
+        };
+      } catch (e) {
+        console.warn('[Centralized useEffect] Error during calculation:', e);
+        shouldBeVisible = false;
+        query = '';
+        highlightedItems = [];
+        selectedIndex = 0;
+        coords = null;
+      }
+    }
+
+    setSuggestionState(prev => {
+      if (
+        prev.visible === shouldBeVisible &&
+        (!shouldBeVisible ||
+          (prev.query === query &&
+            prev.selectedIndex === selectedIndex &&
+            JSON.stringify(prev.coords) === JSON.stringify(coords) &&
+            JSON.stringify(prev.highlightedItems) === JSON.stringify(highlightedItems)))
+      ) {
+        return prev;
+      }
+
+      if (shouldBeVisible) {
+        console.log('[Centralized useEffect] Showing menu with query:', query);
+        return {
+          ...prev,
+          visible: true,
+          query,
+          highlightedItems,
+          selectedIndex,
+          coords,
+          items: registeredActions,
+        };
+      } else {
+        console.log('[Centralized useEffect] Hiding menu');
+        return {
+          ...prev,
+          visible: false,
+          query: '',
+          highlightedItems: [],
+          selectedIndex: 0,
+          coords: null,
+          items: registeredActions,
+        };
+      }
+    });
+  }, [coordUpdateNonce, registeredActions, editorInstance]);
 
   // --- Effect to calculate coordinates AFTER menu becomes visible ---
   useEffect(() => {
