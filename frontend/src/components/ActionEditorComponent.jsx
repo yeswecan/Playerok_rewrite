@@ -20,8 +20,8 @@ const ActionNode = Node.create({
   name: 'actionNode',
   group: 'inline',
   inline: true,
-  atom: false,
-  selectable: false,
+  atom: true,
+  selectable: true,
   draggable: false,
   content: 'inline*',
   code: true,
@@ -167,7 +167,7 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
   return (
     <NodeViewWrapper
         ref={wrapperRef}
-        className={`action-node-view not-prose relative inline-flex items-center align-baseline mx-0.5 ${selected ? 'outline outline-2 outline-blue-400 rounded' : ''}`}
+        className={`action-node-view not-prose relative inline-flex items-center align-baseline mx-0.5 ${selected ? 'border-2 border-blue-500 rounded' : ''}`}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
     >
