@@ -18,7 +18,7 @@ The component facilitates typing a word, converting it into a distinct visual el
 **3. Core Components:**
 *   **`ActionNode`:** A custom Tiptap element visually representing an action word (e.g., a chip/tag).
     *   Displays the `word`.
-    *   (TODO) The `word` text displayed within the node *must be editable* (e.g., clicking into it allows modification).
+    *   Double-clicking the word text enters inline edit mode with an input field.
     *   Contains a dropdown/selector to choose a `qualifier`.
     *   Includes an "x" button (icon) to the right of the word text, within the node boundary, to delete the node.
 *   **`WordSuggestionExtension`:** A Tiptap extension that:
@@ -62,7 +62,7 @@ The component facilitates typing a word, converting it into a distinct visual el
         4.  The original word text is replaced by the new `ActionNode`.
         5.  The `onActionCreated(word, qualifier)` callback *must* be triggered, allowing the parent to update `registeredActions` if needed.
 *   **`ActionNode` Interaction:**
-    *   **Editing Name:** (TODO) Clicking the word text within the `ActionNode` should allow the user to edit it directly. This might involve temporarily replacing the node with a text input or using Tiptap's contenteditable features carefully. Saving the edit *must* trigger the `onActionWordChanged(nodeId, newWord)` callback.
+    *   **Editing Name:** Double-clicking the word text within the `ActionNode` enters inline edit mode with an input field. Saving the edit (via Enter or blur) updates the node and triggers the `onActionWordChanged(nodeId, newWord)` callback. Pressing Escape cancels editing. After committing or cancelling, the editor automatically blurs, hiding the suggestion menu.
     *   **Changing Qualifier:** Clicking the `ActionNode`'s dropdown area opens a list of `qualifierOptions`. Selecting a qualifier updates the node's internal state and *must trigger an external event/callback* provided by the parent component (`onQualifierChanged(nodeId, newQualifier)`), passing the node identifier and the new qualifier.
     *   **Deleting:** Clicking the "x" button (located to the right of the word within the node) removes the `ActionNode` from the editor content and *must* trigger the `onActionDeleted(nodeId)` callback.
 

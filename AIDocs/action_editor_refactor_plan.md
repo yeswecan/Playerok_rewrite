@@ -60,42 +60,27 @@ Here’s a meticulous plan for the new developer. Each step aims to isolate chan
 
 ---
 
-**Step 2: Centralize State Calculation in React `useEffect`**
+**Step 2: Centralize State Calculation in React `useEffect` (Initial Draft)**
 
-*   **Goal:** Make the main `useEffect` in `ActionEditorComponent` responsible for calculating the *entire* suggestion state based on Tiptap's current state, triggered by `updateRequestNonce`.
+*   **Goal:** *Temporarily* make the main `useEffect` responsible for calculating suggestion state based on Tiptap's state, triggered by `updateRequestNonce`. *Note: This step reflects the original plan but is known to have timing issues that Step 3.1 will fix.*
 *   **Tasks:**
     1.  **Edit `ActionEditorComponent.jsx`:**
-        *   Locate the main `useEffect` hook that depends on `[updateRequestNonce, registeredActions]`.
+        *   Locate or create a main `useEffect` hook that depends on `[updateRequestNonce, registeredActions, editorInstance]`.
+        *   Add state for `updateRequestNonce` and the `requestStateUpdate` callback (which increments the nonce) to `WordSuggestionExtension.configure` options.
         *   **Inside the effect:**
-            *   Get the current editor state: `const { state } = editorInstance;`
-            *   Get selection and composing state: `const { selection } = state; const composing = editorInstance.view.composing;`
-            *   **Visibility Logic:**
-                *   Determine `shouldBeVisible`: It should be true *only if* `editorInstance.isFocused`, `selection.empty`, *and* the cursor is *not* inside an existing `ActionNode`'s content (`!selection.$head.parent.type.name === 'actionNode'`). Add console logs to trace this logic.
-            *   **Query & Highlighting Logic (if visible):**
-                *   Calculate `textBeforeCursor` and `query` based on `selection.$from`.
-                *   Calculate `highlightedItems` by filtering `registeredActions`.
-                *   Calculate `selectedIndex` based on `highlightedItems`.
-            *   **Coordinate Logic (if visible):**
-                *   Calculate `relativeCoords` using `view.coordsAtPos` and `editorContainerRef`, *only if* `editorContainerRef.current` exists.
-            *   **Atomic State Update:**
-                *   If `shouldBeVisible`: Call `setSuggestionState` *once* with a new object containing `{ visible: true, coords: relativeCoords, query, items: registeredActions, highlightedItems, selectedIndex }`.
-                *   If `!shouldBeVisible`: Call `setSuggestionState` *once* setting `{ visible: false, coords: null, query: '', highlightedItems: [], selectedIndex: 0 }` (or retain items if preferred, but ensure `visible` is false). Add checks to avoid setting state if it's already hidden.
-        *   Modify the `WordSuggestionExtension`'s `onUpdate` handler: Remove *all* logic related to calculating `highlightedItems` or `selectedIndex`. Its only job now is `requestStateUpdate('update')`.
+            *   Get current editor state (`state`, `selection`, `view.composing`).
+            *   Get suggestion plugin state (`suggestionPluginKey.getState(state)`).
+            *   Determine `shouldBeVisible` based on `isFocused`, `selection.empty`, `!isNodeSelection`, `!composing`, `pluginState?.active`.
+            *   If `shouldBeVisible`, calculate `query` (from plugin state or text), `highlightedItems`, `selectedIndex` (e.g., reset to 0), and `relativeCoords` (using `view.coordsAtPos`). Handle coord calculation errors.
+            *   Call `setSuggestionState` *once* with the full state object (`{ visible: true/false, ... }`).
 *   **Testing:**
     1.  **Run:** `npm run dev`.
     2.  **Open:** `/test-editor`.
     3.  **Test:**
-        *   Click into the editor. **Expect:** Suggestion menu appears near the cursor, showing all `registeredActions`.
-        *   Click outside the editor. **Expect:** Menu disappears.
-        *   Click back into the editor. **Expect:** Menu reappears.
-        *   Type "re". **Expect:** Menu updates, 'react', 'redux', 'reducer' (etc.) are highlighted, the first match ('react') is selected (index 0). Menu position follows cursor.
-        *   Type "act". **Expect:** Menu updates, 'action' is highlighted and selected.
-        *   Backspace until the query is empty. **Expect:** Menu shows all items, none specifically highlighted, index 0 selected.
-        *   Use Arrow Keys while typing. **Expect:** Cursor moves, menu position updates correctly, query/highlighting updates based on the word under the cursor.
-        *   Move cursor inside existing text *not* related to suggestions. **Expect:** Menu remains visible (as long as editor focused and selection empty), but query is empty, nothing highlighted.
-        *   Press ArrowUp/Down. **Expect:** Selection in the *visible* suggestion list changes. The list scrolls if necessary.
-        *   Press Escape. **Expect:** Menu disappears, editor loses focus (blur).
-        *   Focus the editor again. **Expect:** Menu reappears correctly.
+        *   Focus editor. **Expect:** Menu *might* appear inconsistently due to timing issues.
+        *   Type "re". **Expect:** Menu *should* update and filter.
+        *   Blur/Refocus. **Expect:** Menu *might* disappear/reappear inconsistently.
+        *   *Focus on verifying basic state reading and calculation, acknowledging potential instability.* Console logs for `shouldBeVisible` and coord calculation are key.
 
 ---
 
@@ -138,51 +123,92 @@ Here’s a meticulous plan for the new developer. Each step aims to isolate chan
 
 ---
 
-**Step 4: Implement Implicit Conversion (Space Key)**
+**Step 3.1: Implement Event-Driven State Machine for Suggestions**
 
-*   **Goal:** Convert the word before the cursor into an `ActionNode` when the spacebar is pressed, if applicable.
+*   **Goal:** Refactor the suggestion state management in `ActionEditorComponent` to use `useReducer` and listen for specific custom events emitted by `WordSuggestionExtension`, making state transitions more predictable and less prone to timing issues.
 *   **Tasks:**
-    1.  **Edit `ActionEditorComponent.jsx` (inside `WordSuggestionExtension`):**
-        *   Add/modify the `Space` key shortcut in `addKeyboardShortcuts`.
-        *   **Inside the shortcut handler `({ editor }) => { ... }`:**
-            *   Get current selection: `const { state } = editor; const { selection } = state;`
-            *   Check conditions: `if (!selection.empty || selection.$from.parent.type.name === 'actionNode') { return false; }` (Don't convert if not empty selection or already inside an action node).
-            *   Get the text immediately before the cursor: `const textBefore = selection.$from.parent.textBetween(Math.max(0, selection.$from.parentOffset - 50), selection.$from.parentOffset, ' ', '\ufffc');` (Limit search distance).
-            *   Identify the word: Use regex or string splitting to find the last word in `textBefore` (e.g., `const match = textBefore.match(/(\S+)$/);`).
-            *   **If a word is found:**
-                *   Calculate the range of the word to replace: `const end = selection.$from.pos; const start = end - match[1].length;`
-                *   Create the ActionNode content: `const nodeContent = [{ type: editor.schema.nodes.actionNode.name, attrs: { qualifier: this.options.defaultQualifier }, content: [{ type: 'text', text: match[1] }] }];`
-                *   Execute the replacement: `editor.chain().focus().insertContentAt({ from: start, to: end }, nodeContent).run();`
-                *   **Crucially:** Trigger the callback *synchronously* if possible, or use `editor.emit` if state access is needed: `editor.emit('action-created-implicit', { word: match[1], qualifier: this.options.defaultQualifier });` (We'll handle the callback in React).
-                *   **Return `true`** to prevent the default space insertion.
-            *   **If no word is found or conditions aren't met:** Return `false` to allow default space insertion.
-    2.  **Edit `ActionEditorComponent.jsx`:**
-        *   Add a `useEffect` to listen for the new custom event:
-          ```jsx
-          useEffect(() => {
-            if (!editorInstance) return;
-            const handleImplicitCreate = ({ word, qualifier }) => {
-              console.log(`[Implicit Action Create]: ${word}, ${qualifier}`);
-              onActionCreated(word, qualifier);
-              // Maybe request state update if menu needs to redisplay/reposition,
-              // though space likely moves cursor out of suggestion context anyway.
-              // requestStateUpdate('implicit-create');
-            };
-            editorInstance.on('action-created-implicit', handleImplicitCreate);
-            return () => {
-              editorInstance.off('action-created-implicit', handleImplicitCreate);
-            };
-          }, [editorInstance, onActionCreated/*, requestStateUpdate*/]);
-          ```
+    1.  **Edit `ActionEditorComponent.jsx`:**
+        *   **Define State Structure:** Solidify the `initialSuggestionState` object structure (e.g., `{ visible: false, items: [], highlightedItems: [], selectedIndex: 0, query: '', coords: null, editingNodeId: null }`).
+        *   **Define Reducer Actions:** Define action types as constants or an enum (e.g., `UPDATE_CONTEXT`, `NAVIGATE`, `SELECT_START`, `SELECT_COMPLETE`, `HIDE`, `SET_COORDS`, `EDIT_NODE_START`, `EDIT_NODE_END`).
+        *   **Implement `suggestionReducer`:**
+            *   Create the reducer function `(state, action) => { switch(action.type) { ... } }`.
+            *   Handle `UPDATE_CONTEXT`: Takes `{ isActive, range, query }` payload. Sets `visible = isActive`, `query = action.payload.query`, resets `selectedIndex`, potentially clears `coords` (to be recalculated). If `!isActive`, sets `visible = false`. Filters `registeredActions` based on `query` to update `highlightedItems`.
+            *   Handle `NAVIGATE`: Takes `{ direction: 'up' | 'down' }` payload. Calculates new `selectedIndex` based on `state.highlightedItems`.
+            *   Handle `HIDE`: Sets `visible = false`.
+            *   Handle `SET_COORDS`: Takes `{ coords }` payload. Updates `state.coords`.
+            *   Handle `EDIT_NODE_START`: Takes `{ nodeId }` payload. Sets `visible = false`, `editingNodeId = action.payload.nodeId`.
+            *   Handle `EDIT_NODE_END`: Sets `editingNodeId = null`.
+            *   *(SELECT actions are handled directly via the `handleSelect` callback)*.
+        *   **Use the Reducer:** Replace `useState(initialSuggestionState)` with `const [suggestionState, dispatch] = useReducer(suggestionReducer, initialSuggestionState);`. Remove `setSuggestionState`.
+    2.  **Edit `ActionEditorComponent.jsx` (WordSuggestionExtension definition):**
+        *   **Modify Plugin `apply`:** Instead of just returning state, the plugin's `apply` method should determine `isActive`, `range`, `query`. If these values *change* compared to the previous state, it should `this.editor.emit('suggestion:contextChange', { isActive, range, query })`. Remove any direct calls to `requestStateUpdate` from `apply`. Ensure `isActive` logic handles empty lines on focus.
+        *   **Modify Event Handlers (`onFocus`, `onBlur`, `onSelectionUpdate`, `onUpdate`):** These should trigger the plugin's `apply` logic implicitly (via state changes). Remove calls to `requestStateUpdate`. Focus/Blur could emit `editor:focused`/`editor:blurred` if extra handling needed.
+        *   **Modify Keyboard Shortcuts:**
+            *   ArrowUp/Down: `this.editor.emit('suggestion:navigate', { direction: 'up' / 'down' })`. Return `true`.
+            *   Enter: `this.editor.emit('suggestion:select')`. Return `true`.
+            *   Escape: `this.editor.emit('suggestion:hide')`. Return `true`.
+    3.  **Edit `ActionEditorComponent.jsx` (React Component):**
+        *   **Remove `updateRequestNonce` & `lastUpdateReason`:** No longer needed for core suggestion flow.
+        *   **Remove Main `useEffect` for State Calculation (from Step 2):** Delete the large `useEffect` hook.
+        *   **Add Event Listeners (`useEffect`):**
+            *   Create a `useEffect` hook that runs once on editor instance creation `[editorInstance]`.
+            *   Inside, set up listeners (`editorInstance.on(...)`) for the custom events:
+                *   `'suggestion:contextChange'`: Calls `dispatch({ type: 'UPDATE_CONTEXT', payload: eventData })`.
+                *   `'suggestion:navigate'`: Calls `dispatch({ type: 'NAVIGATE', payload: eventData })`.
+                *   `'suggestion:hide'`: Calls `dispatch({ type: 'HIDE' })`.
+                *   `'suggestion:select'`: Calls the existing `handleSelect` callback.
+            *   Return a cleanup function that calls `editorInstance.off(...)` for all listeners.
+        *   **Add Coordinate Calculation Effect (`useEffect`):**
+            *   Create a separate `useEffect` that depends on `[suggestionState.visible, suggestionState.query, editorInstance]` (or state parts implying coords are needed & range available).
+            *   If `suggestionState.visible` is true, calculate `relativeCoords` using `editorInstance.view.coordsAtPos`. Get the `range` from the plugin state (`suggestionPluginKey.getState(editorInstance.state)?.range`) or store it temporarily from the `UPDATE_CONTEXT` payload if needed.
+            *   Call `dispatch({ type: 'SET_COORDS', payload: { coords: relativeCoords } })`. Handle errors.
+        *   **Update `HintContext`:** Pass `dispatch` down if `ActionNodeView` needs it (e.g., for `EDIT_NODE_START`/`END`).
+        *   **Modify `handleSelect`:** Remove direct `setSuggestionState` calls. The state should update naturally via the `suggestion:contextChange` event triggered by the content insertion.
 *   **Testing:**
     1.  **Run:** `npm run dev`.
     2.  **Open:** `/test-editor`.
     3.  **Test:**
-        *   Type "testword". Press `Space`. **Expect:** "testword" becomes an `ActionNode`. A space is *not* inserted after it (the chain command replaces the word, cursor is after node). Check console for `onActionCreated`. Suggestion menu should likely disappear or update based on new cursor pos.
-        *   Type " another ". Press `Space`. **Expect:** Only "another" becomes an `ActionNode`.
-        *   Click inside an existing `ActionNode`. Type text. Press `Space`. **Expect:** Space is inserted normally, no conversion happens.
-        *   Place cursor immediately after an `ActionNode`. Press `Space`. **Expect:** Space is inserted normally.
-    4.  **Regression:** Retest explicit selection (Enter/Click), focus/blur behavior.
+        *   Focus editor. **Expect:** Menu appears reliably. Console shows `UPDATE_CONTEXT` dispatch, then `SET_COORDS` dispatch.
+        *   Type "re". **Expect:** Menu filters correctly via `UPDATE_CONTEXT`.
+        *   Blur editor. **Expect:** Menu disappears reliably via `UPDATE_CONTEXT`.
+        *   Navigate (Arrow keys), Escape, Enter/Click. **Expect:** Correct dispatches (`NAVIGATE`, `HIDE`) or callbacks (`handleSelect`) are triggered, and state updates predictably.
+    4.  **Verify:** Confirm no timing issues. Check console logs for event emission and reducer action handling.
+
+---
+
+**Step 4 (Rewritten): Implement Implicit Conversion (Space Key) via Events**
+
+*   **Goal:** Convert the word before the cursor into an `ActionNode` when the spacebar is pressed, using the event-driven architecture.
+*   **Tasks:**
+    1.  **Edit `ActionEditorComponent.jsx` (inside `WordSuggestionExtension`):**
+        *   Locate the `Space` key shortcut in `addKeyboardShortcuts`.
+        *   **Inside the shortcut handler `({ editor }) => { ... }`:**
+            *   Perform checks: `selection.empty`, not inside `actionNode`.
+            *   Get `textBefore` and find the `word` using regex.
+            *   **If a word is found:**
+                *   Calculate `start` and `end` range.
+                *   Create `nodeContent` for the `ActionNode`.
+                *   Execute Tiptap chain: `insertContentAt({ from: start, to: end }, nodeContent)`, `insertContentAt(posAfterNode, ' ')`. **Crucially, insert the space *after* the node here.**
+                *   **Emit Event:** Instead of calling callbacks directly, emit a specific event: `this.editor.emit('action:createdImplicitly', { word: match[1], qualifier: this.options.defaultQualifier });`
+                *   Return `true`.
+            *   **If no word/conditions not met:** Return `false`.
+    2.  **Edit `ActionEditorComponent.jsx` (React Component):**
+        *   **Add Event Listener (`useEffect`):** In the same effect where other editor listeners are set up, add:
+            *   `editorInstance.on('action:createdImplicitly', handleImplicitCreate);`
+        *   **Implement `handleImplicitCreate`:**
+            *   Define a callback function `handleImplicitCreate = ({ word, qualifier }) => { ... }`.
+            *   Inside, log the event: `console.log('[Implicit Action Create]:', word, qualifier);`.
+            *   Call the prop callback: `onActionCreated(word, qualifier);`.
+            *   *(Optional: Dispatch an action like `HIDE` if the menu needs explicit hiding, though context change should ideally handle it)*.
+        *   **Cleanup:** Add `editorInstance.off('action:createdImplicitly', handleImplicitCreate)` in the `useEffect` cleanup.
+*   **Testing:**
+    1.  **Run:** `npm run dev`.
+    2.  **Open:** `/test-editor`.
+    3.  **Test:**
+        *   Type "testword". Press `Space`. **Expect:** "testword" becomes an `ActionNode`, followed by a space. Console logs `action:createdImplicitly` event emission and the `handleImplicitCreate` log in React. `onActionCreated` prop callback is triggered. Suggestion menu state should update correctly based on the new context after the space (likely hiding).
+        *   Type " another ". Press `Space`. **Expect:** Only "another" becomes an `ActionNode`, followed by a space.
+        *   Click inside an existing `ActionNode`. Type text. Press `Space`. **Expect:** Space is inserted normally, no conversion, no event emitted.
+    4.  **Regression:** Retest explicit selection (Enter/Click), focus/blur behavior, menu navigation.
 
 ---
 
@@ -296,7 +322,7 @@ Here’s a meticulous plan for the new developer. Each step aims to isolate chan
 
 **Step 9: Add a selector border around an ActionNode**
 
-*   **Goal:** Add a selector border in blue that allows to see which nodes we select, so that when we interact with a specific node, we can press backspace or delete and that deletes the node. And the user would know which specific node will get deleted. Deleting via backspace or delete key if we are outside of the node added in text should still work, but we need to also highlight what will get deleted if and when we either change open the menu or edit the text inside the action node. When we start typing outside of the actionnode or blur, the selection border disappears.
+*   **Goal:** Add a selector border in blue that allows to see which nodes we select, so that when we interact with a specific node, we can press backspace or delete and that deletes the node. And the user would know which specific node will get deleted if and when we either change open the menu or edit the text inside the action node. When we start typing outside of the actionnode or blur, the selection border disappears.
 
 Modify the spec to reflect this addition.
 
@@ -312,7 +338,7 @@ Modify the spec to reflect this addition.
 3.  **Key Concepts:**
     *   **ActionNode:** A custom Tiptap inline node representing a configured action word.
     *   **WordSuggestionExtension:** A Tiptap extension managing the suggestion popup's logic and interaction.
-    *   **Uni-directional Flow:** The main architectural change is to make React the owner of the suggestion UI state. Tiptap signals changes, and a React `useEffect` reads Tiptap state to update the React UI state.
+    *   **Event-Driven State:** The suggestion UI state (`suggestionState`) is managed in React using `useReducer`. Tiptap extensions emit specific events (e.g., `suggestion:contextChange`, `suggestion:navigate`, `action:createdImplicitly`). React listens for these events and dispatches actions to the reducer, ensuring predictable state updates.
     *   **Explicit vs. Implicit Conversion:** Understand the difference between selecting a suggestion (explicit) and having text convert automatically on space/blur/move (implicit).
 4.  **Development & Testing:**
     *   Run the frontend dev server: `cd frontend && npm run dev`.
