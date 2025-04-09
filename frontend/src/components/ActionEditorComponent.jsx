@@ -168,39 +168,42 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
     // Also, if suggestion state is in context or prop, set it hidden here
     // For now, assume menu hides on blur or explicit hide elsewhere
   }
-function handleCommitEdit(eventOrValue) {
-  const newWord = (typeof eventOrValue === 'string' ? eventOrValue : eventOrValue.target.value).trim();
-  console.log('[DEBUG][handleCommitEdit] Received value:', newWord);
-    console.log('[handleCommitEdit] Received value:', newWord);
-    if (newWord && newWord !== node.textContent) {
+
+  function handleCommitEdit(value) {
+    const newWord = value.trim();
+    console.log('[handleCommitEdit] Attempting to commit value:', newWord, 'Original:', originalWordRef.current);
+    if (newWord && newWord !== originalWordRef.current) {
       try {
         const pos = getPos();
         if (typeof pos === 'number') {
+          const from = pos + 1;
+          const to = from + originalWordRef.current.length;
+          console.log(`[handleCommitEdit] Replacing range: from=${from}, to=${to} with text: "${newWord}"`);
+
           editor
             .chain()
-            .focus()
-            .insertContentAt(
-              { from: pos + 1, to: pos + node.nodeSize - 1 },
-              { type: 'text', text: newWord }
-            )
+            .insertContentAt({ from, to }, newWord )
             .run();
-          console.log('[DEBUG][handleCommitEdit] Tiptap chain executed.');
+
+          console.log('[handleCommitEdit] Tiptap chain executed.');
+          onActionWordChanged(node.attrs.nodeId, newWord);
+        } else {
+          console.error('[handleCommitEdit] Invalid position:', pos);
         }
-        onActionWordChanged(node.attrs.nodeId, newWord);
       } catch (err) {
-        console.error('Error updating ActionNode word:', err);
+        console.error('[handleCommitEdit] Error updating ActionNode word:', err);
       }
+    } else {
+      console.log('[handleCommitEdit] No changes detected or word is empty. Reverting or keeping original.');
     }
     setIsEditing(false);
-    setSuggestionState(prev => ({ ...prev, visible: false, forceVisible: false }));
-    hideSuggestionMenu();
-    editor?.commands?.blur();
+    setSuggestionState(prev => ({ ...prev, visible: false, forceVisible: false, editingNodeId: null }));
   }
 
   function handleKeyDown(e) {
     const key = e.key;
-    const refState = suggestionStateRef.current || { highlightedItems: [], selectedIndex: -1, items: registeredActions || [] }; // Get current state from ref
-    const fullItems = refState.items || []; // Full list of actions
+    const refState = suggestionStateRef.current || { highlightedItems: [], selectedIndex: -1, items: registeredActions || [] };
+    const fullItems = refState.items || [];
     const maxIndex = fullItems.length > 0 ? fullItems.length - 1 : -1;
 
     if (key === 'ArrowDown' || key === 'Down') {
@@ -221,153 +224,138 @@ function handleCommitEdit(eventOrValue) {
       });
     } else if (key === 'Enter') {
       e.preventDefault();
-      const { selectedIndex } = refState; // Use index from ref
-      const currentItems = refState.items || []; // Use full list
-      console.log('[DEBUG][handleKeyDown] Enter pressed, state:', { currentItems, selectedIndex });
-      if (selectedIndex >= 0 && currentItems && currentItems.length > selectedIndex) {
-        const selectedWord = currentItems[selectedIndex];
-        console.log('[DEBUG][handleKeyDown] Enter pressed, attempting to insert selection:', selectedWord);
-        if (inputRef.current) {
-          inputRef.current.value = selectedWord;
-          console.log('[DEBUG][handleKeyDown] Set input value to:', selectedWord);
-        }
+      const refState = suggestionStateRef.current || {};
+      const { selectedIndex = -1, items = [] } = refState;
+      console.log('[InlineInput Enter Key] State from ref:', refState);
+
+      if (refState.visible && selectedIndex >= 0 && items && items.length > selectedIndex) {
+        const selectedWord = items[selectedIndex];
+        console.log('[InlineInput Enter Key] Selecting suggestion:', selectedWord);
         handleCommitEdit(selectedWord);
       } else {
-        console.log('[DEBUG][handleKeyDown] Enter pressed, committing current input from event:', e.target.value);
-        handleCommitEdit(e);
+        console.log('[InlineInput Enter Key] Committing current input value:', e.target.value);
+        handleCommitEdit(e.target.value);
       }
     } else if (key === 'Escape') {
       e.preventDefault();
-      console.log('[InlineInput] Escape pressed, cancelling edit');
+      console.log('[InlineInput Escape Key] Cancelling edit.');
       setIsEditing(false);
-      setSuggestionState(prev => ({ ...prev, visible: false, forceVisible: false }));
-      hideSuggestionMenu();
-      editor?.commands?.blur();
+      setSuggestionState(prev => ({ ...prev, visible: false, forceVisible: false, editingNodeId: null }));
+      editor?.chain().focus().run();
     }
   }
 
   return (
     <NodeViewWrapper
       ref={wrapperRef}
-      className={`action-node-view not-prose relative inline-flex items-center align-baseline mx-0.5 ${selected ? 'border-2 border-blue-500 rounded' : ''}`}
+      className={`inline-block bg-gray-100 rounded px-2 py-1 mx-px text-sm border border-gray-300 cursor-pointer ${selected ? 'ring-2 ring-blue-500' : ''}`}
+      data-node-id={nodeId}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      <span
-        onDoubleClick={() => {
-          setIsEditing(true);
-          setTimeout(() => {
-            if (!inputRef.current) return;
-            inputRef.current.focus();
-            inputRef.current.select();
-            const query = inputRef.current.value;
-            const highlightedItems = filterSuggestions(query, registeredActions);
-            const selectedIndex = highlightedItems.length > 0 ? 0 : -1;
-            setSuggestionState(prev => ({
-              ...prev,
-              visible: true,
-              forceVisible: true,
-              query,
-              highlightedItems,
-              selectedIndex,
-              coords: calculateCoordsForInput(inputRef.current),
-            }));
-          }, 0);
-        }}
-        className="action-word-content px-1.5 py-0.5 rounded-l bg-yellow-200"
-      >
-        {isEditing ? (
-          <input
-            ref={inputRef}
-            defaultValue={node.textContent}
-            onBlur={handleCommitEdit}
-            onKeyDown={(e) => {
-              console.log('[InlineInput] KeyDown:', e.key);
-              handleKeyDown(e);
+      <NodeViewContent className="hidden" ref={ref} />
+      {isEditing ? (
+        <span className="inline-flex items-center">
+            <input
+                ref={inputRef}
+                defaultValue={originalWordRef.current}
+                onBlur={(e) => handleCommitEdit(e.target.value)}
+                onKeyDown={handleKeyDown}
+                onChange={(e) => {
+                    const query = e.target.value;
+                    setSuggestionState(prev => {
+                        const filtered = filterSuggestions(query, registeredActions);
+                        const coords = calculateCoordsForInput(inputRef.current);
+                        console.log('[InlineInput onChange] Updating suggestions:', { query, filtered, coords });
+                        return {
+                            ...prev,
+                            visible: true,
+                            forceVisible: true,
+                            query,
+                            highlightedItems: filtered,
+                            selectedIndex: filtered.length > 0 ? 0 : -1,
+                            coords,
+                            editingNodeId: nodeId
+                        };
+                    });
+                }}
+                className="bg-white border border-blue-300 rounded px-1 outline-none"
+                style={{ minWidth: '50px' }}
+            />
+        </span>
+      ) : (
+        <span className="inline-flex items-center">
+          <span
+            className="action-word-content inline mr-1"
+            onDoubleClick={() => {
+              console.log('[DoubleClick] Entering edit mode for node:', nodeId, 'word:', node.textContent);
+              originalWordRef.current = node.textContent;
+              setIsEditing(true);
+              setTimeout(() => {
+                inputRef.current?.focus();
+                inputRef.current?.select();
+                const initialQuery = node.textContent;
+                const initialFiltered = filterSuggestions(initialQuery, registeredActions);
+                const initialCoords = calculateCoordsForInput(inputRef.current);
+                console.log('[DoubleClick] Setting initial suggestion state:', { initialQuery, initialFiltered, initialCoords });
+                setSuggestionState(prev => ({
+                    ...prev,
+                    visible: true,
+                    forceVisible: true,
+                    query: initialQuery,
+                    items: registeredActions,
+                    highlightedItems: initialFiltered,
+                    selectedIndex: initialFiltered.length > 0 ? 0 : -1,
+                    coords: initialCoords,
+                    editingNodeId: nodeId
+                }));
+              }, 0);
             }}
-            onChange={(e) => {
-              const query = e.target.value;
-              const newHighlightedItems = filterSuggestions(query, registeredActions);
-
-              // Find the index of the first highlighted item in the *full* list
-              let newSelectedIndex = -1;
-              if (newHighlightedItems.length > 0) {
-                const firstHighlighted = newHighlightedItems[0];
-                newSelectedIndex = (registeredActions || []).findIndex(item => item === firstHighlighted);
-              }
-              if (newSelectedIndex === -1 && query && (registeredActions || []).length > 0) {
-                // If no highlight but there's a query, keep selection at 0 or -1 if no items
-                 newSelectedIndex = 0;
-              } else if (!query && (registeredActions || []).length > 0) {
-                 // If query is cleared, reset to 0
-                 newSelectedIndex = 0;
-              }
-
-              console.log('[DEBUG][onChange] Before update:', { query, newHighlightedItems, selectedIndex: suggestionStateRef.current?.selectedIndex });
-
-              setSuggestionState(prev => {
-                // Always use the full list for 'items'
-                const fullItems = registeredActions || [];
-                const newState = {
-                  ...prev,
-                  visible: true,
-                  query,
-                  highlightedItems: newHighlightedItems,
-                  selectedIndex: newSelectedIndex, // Set based on first highlighted item's index in full list
-                  coords: calculateCoordsForInput(inputRef.current),
-                  items: fullItems, // Ensure full list is passed
-                };
-                console.log('[DEBUG][onChange] After update (new state):', newState);
-                return newState;
-              });
-            }}
-            className="px-1 py-0.5 rounded border border-gray-300"
-          />
-        ) : (
-          <NodeViewContent
-            ref={ref}
-            className="inline"
-          />
-        )}
-      </span>
-      <button
-        onMouseDown={(e) => e.preventDefault()}
-        onClick={toggleDropdown}
-        className="flex items-center px-1 py-0.5 bg-yellow-200 border-l border-yellow-300 hover:bg-yellow-300 transition-colors"
-        aria-haspopup="true"
-        aria-expanded={isOpen}
-      >
-        <span className="mr-0.5">{selectedOptionLabel}</span>
-        <ChevronDown className="w-4 h-4 flex-shrink-0" />
-      </button>
-      {isOpen && (
-        <div
-          className="absolute top-full left-0 mt-1 w-32 bg-white shadow-lg rounded-md border border-gray-200 z-50"
-          onMouseDown={(e) => e.preventDefault()}
-        >
-          {qualifierOptions.map((option) => (
-            <button
-              key={option.id}
-              onClick={(e) => selectQualifier(e, option.id)}
-              className="block w-full text-left px-4 py-2 hover:bg-gray-100 first:rounded-t-md last:rounded-b-md"
-            >
-              {option.label}
+          >
+            {node.textContent || '...'}
+          </span>
+          <button
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={toggleDropdown}
+            className="flex items-center px-1 py-0.5 bg-yellow-200 border-l border-yellow-300 hover:bg-yellow-300 transition-colors relative"
+            aria-haspopup="true"
+            aria-expanded={isOpen}
+          >
+            <span className="mr-0.5">{selectedOptionLabel}</span>
+            <ChevronDown className="w-4 h-4 flex-shrink-0" />
+            {isOpen && (
+                <div
+                  className="absolute top-full left-0 mt-1 w-32 bg-white shadow-lg rounded-md border border-gray-200 z-50"
+                  onMouseDown={(e) => e.preventDefault()}
+                >
+                  {qualifierOptions.map((option) => (
+                    <button
+                      key={option.id}
+                      onClick={(e) => selectQualifier(e, option.id)}
+                      className="block w-full text-left px-4 py-2 hover:bg-gray-100 first:rounded-t-md last:rounded-b-md"
+                    >
+                      {option.label}
                     </button>
-                ))}
-            </div>
-        )}
-        <button
-          onClick={() => {
-            deleteNode();
-            onActionDeleted(node.attrs.nodeId);
-          }}
-          className="flex items-center justify-center px-1 py-0.5 bg-yellow-300 hover:bg-yellow-400 text-gray-800 border-l border-yellow-300 rounded-r transition-colors"
-          title="Delete action"
-        >
-          ×
-        </button>
+                  ))}
+                </div>
+            )}
+          </button>
+          <button
+            onClick={() => {
+              deleteNode();
+              onActionDeleted(node.attrs.nodeId);
+            }}
+            className="flex items-center justify-center px-1 py-0.5 bg-yellow-300 hover:bg-yellow-400 text-gray-800 border-l border-yellow-300 rounded-r transition-colors"
+            title="Delete action"
+          >
+            ×
+          </button>
+        </span>
+      )}
     </NodeViewWrapper>
   );
+});
+
 function filterSuggestions(query, registeredActions) {
   if (!registeredActions) return [];
   return registeredActions.filter(item =>
@@ -384,7 +372,6 @@ function calculateCoordsForInput(inputEl) {
     y: rect.bottom - containerRect.top,
   };
 }
-});
 
 // --- Word Suggestion Extension ---
 const WordSuggestionExtension = Extension.create({

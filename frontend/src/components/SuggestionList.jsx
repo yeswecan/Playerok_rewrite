@@ -4,8 +4,8 @@ import React, { useState, useEffect, forwardRef, useImperativeHandle, useRef } f
 // import { HIGHLIGHT_DICTIONARY } from '../path/to/dictionary';
 
 const SuggestionList = forwardRef((props, ref) => {
-  console.log('[SuggestionList] Rendered with selectedIndex:', props.selectedIndex, 'highlightedItems:', props.highlightedItems, 'query:', props.query);
-  const { selectedIndex, items = [], highlightedItems = [], onSelect, query } = props;
+  console.log('[SuggestionList] Rendered with state:', props);
+  const { selectedIndex, items = [], highlightedItems = [], onSelect, query, editingNodeId } = props; // Destructure editingNodeId
   const listRef = useRef(null);
 
   // Always use the full list
@@ -19,8 +19,8 @@ const SuggestionList = forwardRef((props, ref) => {
     if (item) {
       console.log(`[SuggestionList:selectItem] Found item: ${item}. Calling onSelect...`);
       console.log(`[SuggestionList:selectItem] typeof onSelect: ${typeof onSelect}`);
-      onSelect(item);
-      console.log(`[SuggestionList:selectItem] Called onSelect for item: ${item}`);
+      onSelect(item, editingNodeId); // Pass editingNodeId to onSelect
+      console.log(`[SuggestionList:selectItem] Called onSelect for item: ${item} (editingNodeId: ${editingNodeId})`);
     } else {
       console.warn(`[SuggestionList:selectItem] No item found at index: ${index} in itemsToRender:`, itemsToRender);
     }
@@ -28,7 +28,6 @@ const SuggestionList = forwardRef((props, ref) => {
 
   // Effect to scroll the selected item into view
   useEffect(() => {
-    // Use itemsToRender.length (which is items.length)
     if (listRef.current && selectedIndex >= 0 && selectedIndex < itemsToRender.length) {
       requestAnimationFrame(() => {
         if (!listRef.current) return;
@@ -38,19 +37,15 @@ const SuggestionList = forwardRef((props, ref) => {
         }
       });
     }
-    // Depend on selectedIndex and the identity of the items list
   }, [selectedIndex, itemsToRender]);
 
   // Render the list
   return (
     <div ref={listRef} className="suggestion-list bg-white border border-gray-300 rounded shadow-lg z-50 max-h-40 overflow-y-auto p-1 text-sm">
       {!isEmpty ? (
-        // Iterate over the full items list
         itemsToRender.map((item, index) => {
             const isSelected = index === selectedIndex;
-            // Determine if the item should be visually highlighted (yellow background)
             const shouldHighlight = query && highlightedItems.includes(item);
-            // Base class + conditional selection + conditional highlight
             let className = 'px-3 py-1 cursor-pointer rounded ';
             if (isSelected) {
               className += 'bg-blue-500 text-white';
@@ -67,11 +62,11 @@ const SuggestionList = forwardRef((props, ref) => {
             return (
               <div
                 key={item}
-                data-index={index} // Index within the full list
+                data-index={index}
                 className={className}
                 onMouseDown={(e) => {
                     e.preventDefault();
-                    selectItem(index); // Use the index within the full list
+                    selectItem(index);
                 }}
               >
                 {item}
