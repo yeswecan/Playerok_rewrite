@@ -4,58 +4,66 @@ import React, { useState, useEffect, forwardRef, useImperativeHandle, useRef } f
 // import { HIGHLIGHT_DICTIONARY } from '../path/to/dictionary';
 
 const SuggestionList = forwardRef((props, ref) => {
+  console.log('[SuggestionList] Rendered with selectedIndex:', props.selectedIndex, 'highlightedItems:', props.highlightedItems);
   // Destructure new highlightedItems prop
   const { selectedIndex, setSelectedIndex, items, highlightedItems = [], onSelect, query } = props;
   const listRef = useRef(null); // Ref for the list container div
 
+  // Determine which list to render based on whether there's a query
+  const itemsToRender = query && highlightedItems.length > 0 ? highlightedItems : items;
+  const isEmpty = itemsToRender.length === 0;
+
   const selectItem = index => {
     console.log(`[SuggestionList:selectItem] Called for index: ${index}`);
-    const item = items[index];
+    // Get the item from the list that is actually being rendered
+    const item = itemsToRender[index];
     if (item) {
       console.log(`[SuggestionList:selectItem] Found item: ${item}. Calling onSelect...`);
-      // Log if onSelect is a function before calling
       console.log(`[SuggestionList:selectItem] typeof onSelect: ${typeof onSelect}`);
-      onSelect(item);
+      onSelect(item); // Pass the selected item string directly
       console.log(`[SuggestionList:selectItem] Called onSelect for item: ${item}`);
     } else {
-      console.warn(`[SuggestionList:selectItem] No item found at index: ${index}`);
+      console.warn(`[SuggestionList:selectItem] No item found at index: ${index} in itemsToRender:`, itemsToRender);
     }
   };
 
   // Effect to scroll the selected item into view
   useEffect(() => {
-    if (listRef.current && selectedIndex >= 0 && selectedIndex < items.length) {
-      // Defer scroll slightly to ensure DOM is updated
+    // Use itemsToRender.length for the check
+    if (listRef.current && selectedIndex >= 0 && selectedIndex < itemsToRender.length) {
       requestAnimationFrame(() => {
-        if (!listRef.current) return; // Check ref again inside animation frame
-        // Find the element by its data-index attribute
+        if (!listRef.current) return;
         const selectedElement = listRef.current.querySelector(`[data-index="${selectedIndex}"]`);
         if (selectedElement) {
-          // Scroll into view, block: 'nearest' avoids unnecessary scrolling if already visible
           selectedElement.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
         }
       });
     }
-  }, [selectedIndex, items]); // Run when index or items change
+  }, [selectedIndex, itemsToRender]); // Depend on itemsToRender
 
   // Render the list
   return (
-    // Attach listRef to the main div
     <div ref={listRef} className="suggestion-list bg-white border border-gray-300 rounded shadow-lg z-50 max-h-40 overflow-y-auto p-1 text-sm">
-      {items.length ? (
-        items.map((item, index) => {
-            // Check if the current item should be highlighted based on the passed prop
-            const isHighlighted = highlightedItems.includes(item);
+      {!isEmpty ? (
+        // Iterate over itemsToRender
+        itemsToRender.map((item, index) => {
+            // isHighlighted is implicitly true if we are rendering highlightedItems
+            const isHighlighted = true; // Simplified: All rendered items match query if query exists
+            const isSelected = index === selectedIndex;
+            // Adjusted class logic: highlight based on selection only
+            const className = `px-3 py-1 cursor-pointer rounded ${isSelected ? 'bg-blue-500 text-white' : 'hover:bg-gray-100'}`;
+
+            if (index < 5 || isSelected) {
+                 console.log(`[SuggestionList Item ${index}] selectedIndex: ${selectedIndex}, isSelected: ${isSelected}, item: ${item}, className: ${className}`);
+            }
             return (
               <div
-                key={item}
-                data-index={index}
-                // Add background highlight if item is in highlightedItems
-                className={`px-3 py-1 cursor-pointer rounded ${index === selectedIndex ? 'bg-blue-100' : isHighlighted ? 'bg-yellow-100' : 'hover:bg-gray-100'}`}
-                // Use onMouseDown to prevent editor blur before selection happens
+                key={item} // Use item as key assuming they are unique strings
+                data-index={index} // Index within the *rendered* list
+                className={className}
                 onMouseDown={(e) => {
-                    e.preventDefault(); // Prevent default blur/focus behaviour
-                    selectItem(index);
+                    e.preventDefault();
+                    selectItem(index); // Use the index within the rendered list
                 }}
               >
                 {item}

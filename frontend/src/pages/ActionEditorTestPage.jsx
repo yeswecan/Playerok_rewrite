@@ -119,7 +119,7 @@ const ActionEditorTestPage = () => {
   };
 
   const handleActionWordChanged = (nodeId, newWord) => {
-    console.log(`[ActionEditorTestPage] Word changed for ${nodeId}: ${newWord}`);
+    console.log(`[DEBUG][ActionEditorTestPage] handleActionWordChanged called for nodeId: ${nodeId}, newWord: ${newWord}`);
   };
 
   return (

@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect, createContext, useContext, useRef, useMemo } from 'react';
+import ReactDOM from 'react-dom';
 import { EditorProvider, useCurrentEditor, EditorContent, ReactNodeViewRenderer, NodeViewWrapper, NodeViewContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -98,10 +99,14 @@ const ActionNode = Node.create({
 // Wrap with forwardRef
 const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selected, getPos, deleteNode }, ref) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const inputRef = useRef(null);
   const originalWordRef = useRef(node.textContent);
   const { qualifier, nodeId } = node.attrs || {};
-  const { showHint, hideHint, onActionWordChanged, onActionDeleted } = useContext(HintContext);
+  const hintContext = useContext(HintContext);
+  const { showHint, hideHint, onActionWordChanged, onActionDeleted, onQualifierChanged, setSuggestionState, registeredActions, suggestionStateRef } = hintContext;
   const wrapperRef = useRef(null);
+
   useEffect(() => {
     if (!isOpen) return;
 
@@ -127,77 +132,205 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
   };
 
   const toggleDropdown = (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setIsOpen(!isOpen);
+    e.preventDefault();
+    e.stopPropagation();
+    setIsOpen(!isOpen);
   };
-  
+
   const selectQualifier = (e, id) => {
-      e.preventDefault();
-      e.stopPropagation();
-      // Update React state immediately
-      setIsOpen(false);
-      // Delay the Tiptap attribute update slightly
-      setTimeout(() => {
-          handleQualifierChange(id);
-          onQualifierChanged(nodeId, id);
-      }, 0);
+    e.preventDefault();
+    e.stopPropagation();
+    setIsOpen(false);
+    setTimeout(() => {
+      handleQualifierChange(id);
+      onQualifierChanged(nodeId, id);
+    }, 0);
   };
 
   const handleMouseEnter = () => {
-      if (wrapperRef.current && node.textContent) {
-          const rect = wrapperRef.current.getBoundingClientRect();
-          showHint(rect, node.textContent);
-      }
+    if (wrapperRef.current && node.textContent) {
+      const rect = wrapperRef.current.getBoundingClientRect();
+      showHint(rect, node.textContent);
+    }
   };
 
   const handleMouseLeave = () => {
-      hideHint();
+    hideHint();
   };
 
-  const handleContentBlur = (event) => {
-      const currentWord = node.textContent;
-      console.log(`ActionNode Blur: Node ID '${nodeId}', New Word: '${currentWord}'`);
-      if (nodeId && currentWord && currentWord !== originalWordRef.current) {
-          console.log(`Word changed for node ${nodeId}: '${originalWordRef.current}' -> '${currentWord}'`);
-          onActionWordChanged(nodeId, currentWord);
+  function hideSuggestionMenu() {
+    // This function hides the suggestion menu by setting visible to false
+    editor?.commands?.focus?.();
+    editor?.chain()?.focus()?.run();
+    if (editor?.view?.dispatch) {
+      editor.view.dispatch(editor.state.tr.setMeta('suggestion-hide', true));
+    }
+    // Also, if suggestion state is in context or prop, set it hidden here
+    // For now, assume menu hides on blur or explicit hide elsewhere
+  }
+function handleCommitEdit(eventOrValue) {
+  const newWord = (typeof eventOrValue === 'string' ? eventOrValue : eventOrValue.target.value).trim();
+  console.log('[DEBUG][handleCommitEdit] Received value:', newWord);
+    console.log('[handleCommitEdit] Received value:', newWord);
+    if (newWord && newWord !== node.textContent) {
+      try {
+        const pos = getPos();
+        if (typeof pos === 'number') {
+          editor
+            .chain()
+            .focus()
+            .insertContentAt(
+              { from: pos + 1, to: pos + node.nodeSize - 1 },
+              { type: 'text', text: newWord }
+            )
+            .run();
+          console.log('[DEBUG][handleCommitEdit] Tiptap chain executed.');
+        }
+        onActionWordChanged(node.attrs.nodeId, newWord);
+      } catch (err) {
+        console.error('Error updating ActionNode word:', err);
       }
-  };
+    }
+    setIsEditing(false);
+    setSuggestionState(prev => ({ ...prev, visible: false, forceVisible: false }));
+    hideSuggestionMenu();
+    editor?.commands?.blur();
+  }
+
+  function handleKeyDown(e) {
+    const key = e.key;
+    if (key === 'ArrowDown' || key === 'Down') {
+      e.preventDefault();
+      setSuggestionState(prev => {
+        const maxIndex = (prev.highlightedItems && prev.highlightedItems.length > 0) ? prev.highlightedItems.length - 1 : -1;
+        const newIndex = (prev.selectedIndex < maxIndex && prev.selectedIndex >= 0) ? prev.selectedIndex + 1 : 0;
+        console.log('[InlineInput] ArrowDown, newIndex:', newIndex, 'maxIndex:', maxIndex);
+        return { ...prev, selectedIndex: newIndex };
+      });
+    } else if (key === 'ArrowUp' || key === 'Up') {
+      e.preventDefault();
+      setSuggestionState(prev => {
+        const maxIndex = (prev.highlightedItems && prev.highlightedItems.length > 0) ? prev.highlightedItems.length - 1 : -1;
+        const newIndex = prev.selectedIndex > 0 ? prev.selectedIndex - 1 : maxIndex;
+        console.log('[InlineInput] ArrowUp, newIndex:', newIndex, 'maxIndex:', maxIndex);
+        return { ...prev, selectedIndex: newIndex };
+      });
+    } else if (key === 'Enter') {
+      e.preventDefault();
+      const refObj = suggestionStateRef && suggestionStateRef.current ? suggestionStateRef.current : { highlightedItems: [], selectedIndex: -1 };
+      const { highlightedItems, selectedIndex } = refObj;
+      console.log('[DEBUG][handleKeyDown] Enter pressed, state:', { highlightedItems, selectedIndex });
+      if (selectedIndex >= 0 && highlightedItems && highlightedItems.length > selectedIndex) {
+        const selectedWord = highlightedItems[selectedIndex];
+        console.log('[DEBUG][handleKeyDown] Enter pressed, attempting to insert suggestion:', selectedWord);
+        if (inputRef.current) {
+          inputRef.current.value = selectedWord;
+          console.log('[DEBUG][handleKeyDown] Set input value to:', selectedWord);
+        }
+        handleCommitEdit(selectedWord); // Pass the word directly
+      } else {
+        console.log('[DEBUG][handleKeyDown] Enter pressed, committing current input from event:', e.target.value);
+        handleCommitEdit(e); // Pass the event
+      }
+    } else if (key === 'Escape') {
+      e.preventDefault();
+      console.log('[InlineInput] Escape pressed, cancelling edit');
+      setIsEditing(false);
+      setSuggestionState(prev => ({ ...prev, visible: false, forceVisible: false }));
+      hideSuggestionMenu();
+      editor?.commands?.blur();
+    }
+  }
 
   return (
     <NodeViewWrapper
-        ref={wrapperRef}
-        className={`action-node-view not-prose relative inline-flex items-center align-baseline mx-0.5 ${selected ? 'border-2 border-blue-500 rounded' : ''}`}
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
+      ref={wrapperRef}
+      className={`action-node-view not-prose relative inline-flex items-center align-baseline mx-0.5 ${selected ? 'border-2 border-blue-500 rounded' : ''}`}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
     >
-        <NodeViewContent
-            ref={ref}
-            className="action-word-content px-1.5 py-0.5 rounded-l bg-yellow-200"
-            onBlur={handleContentBlur}
-            onFocus={() => {
-                originalWordRef.current = node.textContent;
-                console.log(`ActionNode Focus: Node ID '${nodeId}', Original Word: '${originalWordRef.current}'`);
+      <span
+        onDoubleClick={() => {
+          setIsEditing(true);
+          setTimeout(() => {
+            if (!inputRef.current) return;
+            inputRef.current.focus();
+            inputRef.current.select();
+            const query = inputRef.current.value;
+            const highlightedItems = filterSuggestions(query, registeredActions);
+            const selectedIndex = highlightedItems.length > 0 ? 0 : -1;
+            setSuggestionState(prev => ({
+              ...prev,
+              visible: true,
+              forceVisible: true,
+              query,
+              highlightedItems,
+              selectedIndex,
+              coords: calculateCoordsForInput(inputRef.current),
+            }));
+          }, 0);
+        }}
+        className="action-word-content px-1.5 py-0.5 rounded-l bg-yellow-200"
+      >
+        {isEditing ? (
+          <input
+            ref={inputRef}
+            defaultValue={node.textContent}
+            onBlur={handleCommitEdit}
+            onKeyDown={(e) => {
+              console.log('[InlineInput] KeyDown:', e.key);
+              handleKeyDown(e);
             }}
-        />
-        <button
-            onClick={toggleDropdown}
-            className="flex items-center px-1 py-0.5 bg-yellow-200 border-l border-yellow-300 hover:bg-yellow-300 transition-colors"
-            aria-haspopup="true"
-            aria-expanded={isOpen}
+            onChange={(e) => {
+              const query = e.target.value;
+              const newHighlightedItems = filterSuggestions(query, registeredActions); // Calculate new highlighted items
+              const newSelectedIndex = newHighlightedItems.length > 0 ? 0 : -1; // Calculate new selected index
+              console.log('[DEBUG][onChange] Before update:', { query, newHighlightedItems, selectedIndex: suggestionStateRef.current.selectedIndex }); // Log before state update
+              setSuggestionState(prev => {
+                const newState = {
+                  ...prev,
+                  visible: true,
+                  query,
+                  highlightedItems: newHighlightedItems, // Use the calculated items
+                  selectedIndex: newSelectedIndex, // <--- UPDATED HERE
+                  coords: calculateCoordsForInput(inputRef.current),
+                };
+                console.log('[DEBUG][onChange] After update (prev state):', prev); // Log previous state inside setter
+                console.log('[DEBUG][onChange] After update (new state):', newState); // Log new state inside setter
+                return newState;
+              });
+            }}
+            className="px-1 py-0.5 rounded border border-gray-300"
+          />
+        ) : (
+          <NodeViewContent
+            ref={ref}
+            className="inline"
+          />
+        )}
+      </span>
+      <button
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={toggleDropdown}
+        className="flex items-center px-1 py-0.5 bg-yellow-200 border-l border-yellow-300 hover:bg-yellow-300 transition-colors"
+        aria-haspopup="true"
+        aria-expanded={isOpen}
+      >
+        <span className="mr-0.5">{selectedOptionLabel}</span>
+        <ChevronDown className="w-4 h-4 flex-shrink-0" />
+      </button>
+      {isOpen && (
+        <div
+          className="absolute top-full left-0 mt-1 w-32 bg-white shadow-lg rounded-md border border-gray-200 z-50"
+          onMouseDown={(e) => e.preventDefault()}
         >
-            <span className="mr-0.5">{selectedOptionLabel}</span>
-            <ChevronDown className="w-4 h-4 flex-shrink-0" />
-        </button>
-        {isOpen && (
-            <div className="absolute top-full left-0 mt-1 w-32 bg-white shadow-lg rounded-md border border-gray-200 z-50">
-                {qualifierOptions.map((option) => (
-                    <button
-                        key={option.id}
-                        onClick={(e) => selectQualifier(e, option.id)}
-                        className="block w-full text-left px-4 py-2 hover:bg-gray-100 first:rounded-t-md last:rounded-b-md"
-                    >
-                        {option.label}
+          {qualifierOptions.map((option) => (
+            <button
+              key={option.id}
+              onClick={(e) => selectQualifier(e, option.id)}
+              className="block w-full text-left px-4 py-2 hover:bg-gray-100 first:rounded-t-md last:rounded-b-md"
+            >
+              {option.label}
                     </button>
                 ))}
             </div>
@@ -214,6 +347,22 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
         </button>
     </NodeViewWrapper>
   );
+function filterSuggestions(query, registeredActions) {
+  if (!registeredActions) return [];
+  return registeredActions.filter(item =>
+    item.toLowerCase().includes(query.toLowerCase())
+  );
+}
+
+function calculateCoordsForInput(inputEl) {
+  if (!inputEl) return null;
+  const rect = inputEl.getBoundingClientRect();
+  const containerRect = inputEl.closest('.relative')?.getBoundingClientRect() || { left: 0, top: 0 };
+  return {
+    x: rect.left - containerRect.left,
+    y: rect.bottom - containerRect.top,
+  };
+}
 });
 
 // --- Word Suggestion Extension ---
@@ -422,7 +571,8 @@ const ActionEditorComponent = ({
     highlightedItems: [],   // Store items matching the query
     selectedIndex: 0,
     coords: null, // Restore coords to initial state
-    query: ''
+    query: '',
+    forceVisible: false, // override flag for inline editing
   });
   const [coordUpdateNonce, setCoordUpdateNonce] = useState(0);
 
@@ -498,10 +648,16 @@ const ActionEditorComponent = ({
   }, []);
 
   const handleNavDown = useCallback(() => {
-    setSuggestionState(prev => ({
-      ...prev,
-      selectedIndex: prev.selectedIndex < prev.items.length - 1 ? prev.selectedIndex + 1 : 0
-    }));
+    console.log('[handleNavDown] Before update:', { selectedIndex: suggestionStateRef.current.selectedIndex, highlightedItems: suggestionStateRef.current.highlightedItems });
+    setSuggestionState(prev => {
+      const maxIndex = (prev.highlightedItems && prev.highlightedItems.length > 0) ? prev.highlightedItems.length - 1 : -1;
+      const newIndex = (prev.selectedIndex < maxIndex && prev.selectedIndex >= 0) ? prev.selectedIndex + 1 : 0;
+      console.log('[handleNavDown] After update:', { newIndex, maxIndex });
+      return {
+        ...prev,
+        selectedIndex: newIndex
+      };
+    });
   }, []);
 
   const handleClose = useCallback(() => {
@@ -510,6 +666,7 @@ const ActionEditorComponent = ({
 
   // Selection handler
   const handleSelect = useCallback((selectedItemFromClick = null) => {
+    console.log('[handleSelect] called with', selectedItemFromClick);
     // Prevent re-entrancy
     if (isSelectingRef.current) {
       console.warn('[ActionEditorComponent:handleSelect] Re-entrancy detected, aborting.');
@@ -517,17 +674,28 @@ const ActionEditorComponent = ({
     }
     isSelectingRef.current = true; // Set lock
     console.count('[ActionEditorComponent] handleSelect entry');
-    console.log('[ActionEditorComponent] Handling suggestion:select');
 
     // Get latest state directly using the ref
     const currentState = suggestionStateRef.current;
-    const { visible, items, selectedIndex, query } = currentState;
-    console.log('[ActionEditorComponent:handleSelect] Current State from Ref:', { visible, selectedIndex, query });
+    const { visible, items, selectedIndex, query, highlightedItems } = currentState;
+    console.log('[ActionEditorComponent:handleSelect] Current State from Ref:', { visible, selectedIndex, query, highlightedItems });
+
+    if (!visible) {
+      console.log('[ActionEditorComponent:handleSelect] Menu not visible, aborting.');
+      isSelectingRef.current = false;
+      return;
+    }
+
+    if (selectedItemFromClick === null && (selectedIndex === -1 || highlightedItems.length === 0)) {
+      console.log('[ActionEditorComponent:handleSelect] No suggestion selected, should commit input instead.');
+      isSelectingRef.current = false;
+      return;
+    }
 
     // Determine the item to use: from click OR from state index (Enter key)
     const itemToInsert = selectedItemFromClick ?? (selectedIndex >= 0 ? items[selectedIndex] : null);
 
-    if (!visible || !itemToInsert || !editorInstance) {
+    if (!itemToInsert || !editorInstance) {
       console.log('[ActionEditorComponent:handleSelect] Invalid state for selection, bailing out.');
       isSelectingRef.current = false; // Release lock
       return;
@@ -558,33 +726,23 @@ const ActionEditorComponent = ({
     }
 
     // Ensure the cursor is placed *after* the inserted node
-    // Calculate the position after the inserted node
     const currentPosition = editorInstance.state.selection.$from;
     const insertPos = (query.length > 0) ? currentPosition.pos - query.length : currentPosition.pos;
-    // The length of the inserted node is 1 (the node itself) + text length. Tiptap handles node size internally.
-    // We just need to set cursor after the node. Tiptap's insertContentAt often does this, but let's be explicit.
-    // Get the position immediately after the potential replacement/insertion range.
     const positionAfterInsertion = (query.length > 0) ? currentPosition.pos - query.length + 1 : currentPosition.pos + 1;
 
     console.log('[ActionEditorComponent:handleSelect] Running chain...');
-    // chain.run(); // Don't run yet, add cursor positioning
-
-    // After initial insertion, get the updated position after the inserted node
     chain.run();
 
     const newPos = editorInstance.state.selection.to; // Position after inserted node
     console.log('[ActionEditorComponent:handleSelect] Position after node insertion:', newPos);
 
-    // Insert a space after the node and move cursor after the space
     editorInstance.chain().focus()
       .insertContentAt(newPos, ' ')
       .setTextSelection(newPos + 1)
       .run();
 
-    // Now Update React State & Blur
     console.log('[ActionEditorComponent:handleSelect] Hiding menu and blurring...');
-    setSuggestionState(prev => ({ ...prev, visible: false, query: '' })); // Reset query
-    // Don't blur, keep focus for continued typing editorInstance?.commands.blur();
+    setSuggestionState(prev => ({ ...prev, visible: false, query: '' }));
 
     try {
       if (typeof onActionCreated === 'function' && itemToInsert) {
@@ -595,7 +753,6 @@ const ActionEditorComponent = ({
       console.error('[ActionEditorComponent:handleSelect] Error in onActionCreated callback:', err);
     }
 
-    // Release lock AFTER all actions
     isSelectingRef.current = false;
   }, [editorInstance, defaultQualifier]);
 
@@ -681,7 +838,78 @@ const ActionEditorComponent = ({
     let selectedIndex = 0;
     let coords = null;
 
-    if (
+    const inlineInputEl = document.querySelector('input[type="text"]');
+    if (inlineInputEl) {
+      try {
+        const inputRect = inlineInputEl.getBoundingClientRect();
+        console.log('[DEBUG] Inline input bounding rect:', inputRect);
+        coords = {
+          x: inputRect.left,
+          y: inputRect.bottom,
+        };
+        console.log('[DEBUG] Final coords for menu (based on input rect):', coords);
+      } catch (e) {
+        console.warn('[DEBUG] Error overriding coords for inline input:', e);
+      }
+    } else if (suggestionState.forceVisible) {
+      // Override coords during inline editing
+
+      function getCaretCoordinates(input) {
+        const div = document.createElement('div');
+        const style = getComputedStyle(input);
+        for (const prop of style) {
+          div.style[prop] = style[prop];
+        }
+        div.style.position = 'absolute';
+        div.style.visibility = 'hidden';
+        div.style.whiteSpace = 'pre-wrap';
+        div.style.wordWrap = 'break-word';
+        div.style.overflow = 'hidden';
+        div.style.height = `${input.offsetHeight}px`;
+        div.style.width = `${input.offsetWidth}px`;
+        div.style.padding = style.padding;
+        div.style.border = style.border;
+        div.style.font = style.font;
+        div.style.lineHeight = style.lineHeight;
+        div.style.letterSpacing = style.letterSpacing;
+        console.log('[getCaretCoordinates] input value:', input.value, 'selectionStart:', input.selectionStart);
+
+        const value = input.value;
+        const selectionStart = input.selectionStart;
+
+        const before = document.createTextNode(value.substring(0, selectionStart));
+        const span = document.createElement('span');
+        span.textContent = '|'; // caret marker
+        const after = document.createTextNode(value.substring(selectionStart));
+
+        div.appendChild(before);
+        div.appendChild(span);
+        div.appendChild(after);
+
+        document.body.appendChild(div);
+        const rect = span.getBoundingClientRect();
+        document.body.removeChild(div);
+
+        return rect;
+      }
+
+      try {
+        const inputEl = document.querySelector('input[type="text"]:focus');
+        if (inputEl) {
+          const rect = inputEl.getBoundingClientRect();
+          const containerRect = editorContainerRef.current?.getBoundingClientRect() || { left: 0, top: 0 };
+          coords = {
+            x: rect.left - containerRect.left,
+            y: rect.bottom - containerRect.top,
+          };
+          console.log('[Centralized useEffect] Overriding coords for inline input:', coords);
+        }
+      } catch (e) {
+        console.warn('[Centralized useEffect] Error overriding coords for inline input:', e);
+      }
+      console.log('[Centralized useEffect] Forcing menu visible due to inline editing.');
+      shouldBeVisible = true;
+    } else if (
       isFocused &&
       selection &&
       selection.empty &&
@@ -699,11 +927,16 @@ const ActionEditorComponent = ({
         const match = textBefore.match(/(\S+)$/);
         query = match ? match[1] : '';
 
-        highlightedItems = registeredActions.filter(item =>
+        highlightedItems = query ? registeredActions.filter(item =>
           item.toLowerCase().includes(query.toLowerCase())
-        );
+        ) : []; // Only highlight if query is non-empty
 
-        selectedIndex = highlightedItems.length > 0 ? 0 : -1;
+        if (highlightedItems.length > 0) {
+          selectedIndex = 0;
+        } else {
+          selectedIndex = -1;
+        }
+        console.log('[DEBUG] Filtering query:', query, 'highlightedItems:', highlightedItems, 'selectedIndex:', selectedIndex);
 
         const pos = selection.$head.pos;
         const absoluteCoords = view.coordsAtPos(pos);
@@ -713,6 +946,14 @@ const ActionEditorComponent = ({
           x: absoluteCoords.left - containerRect.left,
           y: absoluteCoords.bottom - containerRect.top - 30,
         };
+
+        console.log('[Centralized useEffect] Menu visible:', {
+          query,
+          highlightedItems,
+          selectedIndex,
+          coords,
+          forceVisible: suggestionState.forceVisible,
+        });
       } catch (e) {
         console.warn('[Centralized useEffect] Error during calculation:', e);
         shouldBeVisible = false;
@@ -724,97 +965,140 @@ const ActionEditorComponent = ({
     }
 
     setSuggestionState(prev => {
-      if (
-        prev.visible === shouldBeVisible &&
-        (!shouldBeVisible ||
-          (prev.query === query &&
-            prev.selectedIndex === selectedIndex &&
-            JSON.stringify(prev.coords) === JSON.stringify(coords) &&
-            JSON.stringify(prev.highlightedItems) === JSON.stringify(highlightedItems)))
-      ) {
-        return prev;
+      // Calculate new state based on current logic results
+      const newHighlightedItems = shouldBeVisible ? highlightedItems : [];
+
+      // Preserve selectedIndex if possible, otherwise reset
+      let newSelectedIndex = -1;
+      if (shouldBeVisible && newHighlightedItems.length > 0) {
+        // If the query changed OR the previous index is now invalid, reset to 0
+        if (prev.query !== query || !(prev.selectedIndex >= 0 && prev.selectedIndex < newHighlightedItems.length)) {
+           newSelectedIndex = 0;
+        } else {
+           // Otherwise, keep the previous index
+           newSelectedIndex = prev.selectedIndex;
+        }
+      } else {
+         newSelectedIndex = -1; // No items or not visible
       }
 
-      if (shouldBeVisible) {
-        console.log('[Centralized useEffect] Showing menu with query:', query);
+      const newCoords = shouldBeVisible ? coords : null;
+      const newQuery = shouldBeVisible ? query : '';
+
+      const newState = {
+        ...prev,
+        visible: shouldBeVisible,
+        query: newQuery,
+        highlightedItems: newHighlightedItems,
+        selectedIndex: newSelectedIndex,
+        coords: newCoords,
+        items: registeredActions, // Keep full list
+      };
+
+      // Log comparison for debugging, but always return newState to force update
+      const needsUpdate =
+        prev.visible !== shouldBeVisible ||
+        prev.query !== newQuery ||
+        prev.selectedIndex !== newSelectedIndex ||
+        JSON.stringify(prev.coords) !== JSON.stringify(newCoords) ||
+        JSON.stringify(prev.highlightedItems) !== JSON.stringify(newHighlightedItems);
+
+      if (!needsUpdate) {
+         console.log('[DEBUG] State appears unchanged, but forcing update anyway.');
+      }
+
+      console.log('[DEBUG] Updating state:', newState);
+
+      // If forceVisible is true (inline editing), only update coords and items, preserve the rest from prev state
+      if (prev.forceVisible) {
+        // Only allow coordinate updates if they actually changed
+        const coordsChanged = JSON.stringify(prev.coords) !== JSON.stringify(newCoords);
         return {
-          ...prev,
-          visible: true,
-          query,
-          highlightedItems,
-          selectedIndex,
-          coords,
-          items: registeredActions,
-        };
-      } else {
-        console.log('[Centralized useEffect] Hiding menu');
-        return {
-          ...prev,
-          visible: false,
-          query: '',
-          highlightedItems: [],
-          selectedIndex: 0,
-          coords: null,
-          items: registeredActions,
+          ...prev, // Keep previous query, highlightedItems, selectedIndex, visible, forceVisible
+          coords: coordsChanged ? newCoords : prev.coords, // Update coords only if changed
+          items: registeredActions, // Ensure items list is up-to-date
         };
       }
+
+      return newState; // Otherwise, apply the calculated state (normal suggestion mode)
     });
-  }, [coordUpdateNonce, registeredActions, editorInstance]);
+  }, [coordUpdateNonce, registeredActions, editorInstance, suggestionState.forceVisible]);
 
   // --- Effect to calculate coordinates AFTER menu becomes visible ---
   useEffect(() => {
     if (suggestionState.visible) {
-        console.log('[ActionEditorComponent useEffect] Running effect. Visible:', suggestionState.visible, 'Query:', suggestionState.query);
-        if (!editorInstance || !editorContainerRef.current) { 
-            console.warn('[ActionEditorComponent useEffect] Aborting coord calculation: instance or ref not available.');
-            return;
-        }
-        const { view } = editorInstance;
-        const { selection } = view.state;
-
-        if (!selection || selection.$head === null || typeof selection.$head.pos !== 'number') {
-            console.warn('[ActionEditorComponent useEffect] Invalid selection state.');
-            return;
-        }
-        console.log('[ActionEditorComponent useEffect] Current selection head pos:', selection.$head.pos);
-
-        const absoluteCoords = view.coordsAtPos(selection.$head.pos);
-        console.log('[ActionEditorComponent useEffect] Result of coordsAtPos:', absoluteCoords);
-        const containerRect = editorContainerRef.current.getBoundingClientRect();
-
-        if (!absoluteCoords || typeof absoluteCoords.left !== 'number' || typeof absoluteCoords.top !== 'number') {
-            console.warn('[ActionEditorComponent useEffect] coordsAtPos returned invalid data:', absoluteCoords);
+        console.log('[Coords Effect] Running. Visible:', suggestionState.visible, 'Query:', suggestionState.query);
+        if (!editorInstance) {
+            console.warn('[Coords Effect] Aborting: instance not available.');
             return;
         }
 
-        const relativeCoords = {
-            x: absoluteCoords.left - containerRect.left,
-            // Adjust offset
-            y: absoluteCoords.bottom - containerRect.top - 30, 
-        };
+        let newCoords = null;
+        const inlineInputEl = document.querySelector('input[type="text"]');
 
-        console.log('[ActionEditorComponent useEffect] Calculated Coords:', { absoluteCoords, containerRect, relativeCoords });
+        if (inlineInputEl) {
+          // Calculate coords based on inline input
+          try {
+            const inputRect = inlineInputEl.getBoundingClientRect();
+            newCoords = {
+              x: inputRect.left,
+              y: inputRect.bottom,
+            };
+            console.log('[Coords Effect] Calculated coords for inline input:', newCoords);
+          } catch (e) {
+            console.warn('[Coords Effect] Error calculating coords for inline input:', e);
+          }
+        } else {
+          // Calculate coords based on ProseMirror selection
+          if (!editorContainerRef.current) {
+            console.warn('[Coords Effect] Aborting: container ref not available.');
+            return;
+          }
+          const { view } = editorInstance;
+          const { selection } = view.state;
+
+          if (!selection || selection.$head === null || typeof selection.$head.pos !== 'number') {
+              console.warn('[Coords Effect] Invalid selection state.');
+              return;
+          }
+          console.log('[Coords Effect] Current selection head pos:', selection.$head.pos);
+
+          const absoluteCoords = view.coordsAtPos(selection.$head.pos);
+          console.log('[Coords Effect] Result of coordsAtPos:', absoluteCoords);
+          const containerRect = editorContainerRef.current.getBoundingClientRect();
+
+          if (!absoluteCoords || typeof absoluteCoords.left !== 'number' || typeof absoluteCoords.top !== 'number') {
+              console.warn('[Coords Effect] coordsAtPos returned invalid data:', absoluteCoords);
+              return;
+          }
+
+          newCoords = {
+              x: absoluteCoords.left, // Use absolute screen coords
+              y: absoluteCoords.bottom, // Use absolute screen coords
+          };
+          console.log('[Coords Effect] Calculated coords for ProseMirror selection:', newCoords);
+        }
 
         // Update coords state directly
         setSuggestionState(prev => {
             if (!prev.visible) {
-                console.log('[ActionEditorComponent useEffect setState] Prev state not visible, bailing.');
-                return prev; 
+                console.log('[Coords Effect setState] Prev state not visible, bailing.');
+                return prev;
             }
-            const coordsChanged = prev.coords?.x !== relativeCoords.x || prev.coords?.y !== relativeCoords.y;
-            console.log('[ActionEditorComponent useEffect setState] Coords changed:', coordsChanged, 'Prev:', prev.coords, 'New:', relativeCoords);
+            const coordsChanged = JSON.stringify(prev.coords) !== JSON.stringify(newCoords);
+            console.log('[Coords Effect setState] Coords changed:', coordsChanged, 'Prev:', prev.coords, 'New:', newCoords);
             if (coordsChanged) {
-                console.log('[ActionEditorComponent useEffect setState] Updating coords state.');
-                return { ...prev, coords: relativeCoords };
+                console.log('[Coords Effect setState] Updating coords state.');
+                return { ...prev, coords: newCoords };
             }
             return prev;
         });
     } else if (suggestionState.coords !== null) {
         // If menu becomes hidden, clear coords immediately
-        console.log('[ActionEditorComponent useEffect] Visible is false, clearing coords.');
+        console.log('[Coords Effect] Visible is false, clearing coords.');
         setSuggestionState(prev => ({ ...prev, coords: null }));
     }
-  }, [suggestionState.visible, editorInstance, suggestionState.query, suggestionState.selectedIndex, coordUpdateNonce]);
+  }, [suggestionState.visible, editorInstance, suggestionState.query, suggestionState.selectedIndex, coordUpdateNonce]); // Dependencies remain the same
 
   // --- Add logging right before render return ---
   console.log('[ActionEditorComponent Render] State:', {
@@ -832,13 +1116,17 @@ const ActionEditorComponent = ({
       showHint: () => {}, // TODO: Implement hint system
       hideHint: () => {},
       onActionWordChanged,
+      onQualifierChanged,
+      setSuggestionState,
+      registeredActions,
+      suggestionStateRef,
     }}>
       <div className="relative" ref={editorContainerRef}>
         <EditorProvider
           slotBefore={null}
           slotAfter={null}
           extensions={extensions}
-          content={initialContent}
+          content={`<p><span data-type="action-node" data-node-id="init1" data-qualifier="incoming"><span class="action-word-content">testaction</span></span></p>`}
           editorProps={{
             attributes: {
               class: 'prose max-w-full focus:outline-none min-h-[100px] px-4 py-2',
@@ -863,25 +1151,28 @@ const ActionEditorComponent = ({
         </EditorProvider>
 
         {/* Restore original render condition */}
-        {suggestionState.visible && suggestionState.coords && (
-          <div
-            className="absolute z-50"
-            style={{
-              top: suggestionState.coords.y,
-              left: suggestionState.coords.x
-            }}
-            onMouseDown={(e) => e.preventDefault()}
-          >
-            <SuggestionList
-              items={suggestionState.items}
-              selectedIndex={suggestionState.selectedIndex}
-              highlightedItems={suggestionState.highlightedItems}
-              onSelect={handleSelect}
-              coords={suggestionState.coords}
-              query={suggestionState.query}
-            />
-          </div>
-        )}
+        {suggestionState.visible && suggestionState.coords &&
+          ReactDOM.createPortal(
+            <div
+              className="fixed z-50"
+              style={{
+                top: suggestionState.coords.y,
+                left: suggestionState.coords.x
+              }}
+              onMouseDown={(e) => e.preventDefault()}
+            >
+              <SuggestionList
+                items={suggestionState.items}
+                selectedIndex={suggestionState.selectedIndex}
+                highlightedItems={suggestionState.highlightedItems}
+                onSelect={handleSelect}
+                coords={suggestionState.coords}
+                query={suggestionState.query}
+              />
+            </div>,
+            document.body
+          )
+        }
       </div>
     </HintContext.Provider>
   );
