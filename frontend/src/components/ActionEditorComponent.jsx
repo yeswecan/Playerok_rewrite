@@ -6,7 +6,7 @@ import { Node, mergeAttributes, Extension } from '@tiptap/core';
 import { ChevronDown } from 'lucide-react';
 import SuggestionList from './SuggestionList.jsx';
 import { TextSelection } from '@tiptap/pm/state';
-import { Plugin, PluginKey } from 'prosemirror-state';
+import { Plugin, PluginKey, NodeSelection } from 'prosemirror-state';
 
 // --- Hint Context ---
 export const HintContext = createContext({
@@ -99,7 +99,7 @@ const ActionNode = Node.create({
 const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selected, getPos, deleteNode }, ref) => {
   const [isOpen, setIsOpen] = useState(false);
   const originalWordRef = useRef(node.textContent);
-  const { qualifier, nodeId } = node.attrs;
+  const { qualifier, nodeId } = node.attrs || {};
   const { showHint, hideHint, onActionWordChanged, onActionDeleted } = useContext(HintContext);
   const wrapperRef = useRef(null);
   useEffect(() => {
@@ -352,7 +352,7 @@ const WordSuggestionExtension = Extension.create({
           const nodeContent = [{
             type: this.editor.schema.nodes.actionNode.name,
             attrs: { qualifier: this.options.defaultQualifier },
-            content: [{ type: 'text', text: word }]
+            content: [{ type: 'text', text: word }],
           }];
 
           this.editor.chain().focus().insertContentAt({ from: start, to: end }, nodeContent).run();
@@ -656,7 +656,7 @@ const ActionEditorComponent = ({
         const nodeContent = [{
           type: editorInstance.state.schema.nodes.actionNode.name,
           attrs: { qualifier: defaultQualifier },
-          content: [{ type: 'text', text: prevQuery }]
+          content: [{ type: 'text', text: prevQuery }],
         }];
 
         const docSize = state.doc.content.size;
@@ -797,17 +797,17 @@ const ActionEditorComponent = ({
 
         // Update coords state directly
         setSuggestionState(prev => {
-             if (!prev.visible) {
-                 console.log('[ActionEditorComponent useEffect setState] Prev state not visible, bailing.');
-                 return prev; 
-             }
-             const coordsChanged = prev.coords?.x !== relativeCoords.x || prev.coords?.y !== relativeCoords.y;
-             console.log('[ActionEditorComponent useEffect setState] Coords changed:', coordsChanged, 'Prev:', prev.coords, 'New:', relativeCoords);
-             if (coordsChanged) {
-                 console.log('[ActionEditorComponent useEffect setState] Updating coords state.');
-                 return { ...prev, coords: relativeCoords };
-             }
-             return prev;
+            if (!prev.visible) {
+                console.log('[ActionEditorComponent useEffect setState] Prev state not visible, bailing.');
+                return prev; 
+            }
+            const coordsChanged = prev.coords?.x !== relativeCoords.x || prev.coords?.y !== relativeCoords.y;
+            console.log('[ActionEditorComponent useEffect setState] Coords changed:', coordsChanged, 'Prev:', prev.coords, 'New:', relativeCoords);
+            if (coordsChanged) {
+                console.log('[ActionEditorComponent useEffect setState] Updating coords state.');
+                return { ...prev, coords: relativeCoords };
+            }
+            return prev;
         });
     } else if (suggestionState.coords !== null) {
         // If menu becomes hidden, clear coords immediately
@@ -842,6 +842,20 @@ const ActionEditorComponent = ({
           editorProps={{
             attributes: {
               class: 'prose max-w-full focus:outline-none min-h-[100px] px-4 py-2',
+            },
+            handleDOMEvents: {
+              blur: (view, event) => {
+                // Clear node selection by setting a text selection at the current position
+                const { state } = view;
+                const { selection } = state;
+                // Only clear if it's currently a NodeSelection
+                if (selection instanceof NodeSelection) {
+                    // Set text selection at the start of the previously selected node
+                    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, selection.from)));
+                    console.log('Node selection cleared on blur');
+                }
+                return false; // Allow other handlers to run
+              },
             },
           }}
         >

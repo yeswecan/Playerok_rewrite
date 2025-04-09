@@ -1,3 +1,37 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer components {
+  /* Override ProseMirror inline node selection grips with a full border */
+  .ProseMirror-selectednode {
+    /* Remove default PM outline/shadow */
+    outline: none !important;
+    box-shadow: none !important;
+    /* Apply border directly to the inner wrapper for better control */
+    border: none !important; /* Remove border from the PM selection itself */
+    background: transparent !important; /* Ensure no background color */
+  }
+
+  /* Apply the desired border to our specific node view wrapper when selected */
+  .ProseMirror-selectednode .action-node-view {
+      border: 2px solid #3b82f6 !important; /* Tailwind blue-500 */
+      border-radius: 0.25rem !important; /* rounded */
+      /* Ensure no extra outline/shadow on the wrapper itself */
+      outline: none !important;
+      box-shadow: none !important;
+  }
+
+  /* Hide potential pseudo-elements used for grips */
+  .ProseMirror-selectednode::before,
+  .ProseMirror-selectednode::after,
+  .ProseMirror-selectednode .action-node-view::before,
+  .ProseMirror-selectednode .action-node-view::after {
+    display: none !important;
+    content: none !important;
+    border: none !important;
+    background: none !important;
+    width: 0 !important;
+    height: 0 !important;
+  }
+}

@@ -1,7 +1,8 @@
-# Specification: Playerok - Playlist Element Action Editor Component
+# Specification: Playerok - Action Editor Component for Playlist Editor
 
 **1. Goal:**
-Provide an inline editor experience within a larger application context (e.g., a playlist track) for creating and managing "Action Words". These words represent specific events or actions (incoming triggers, outgoing commands, scheduled events) associated with the track. The component facilitates typing a word, converting it into a distinct visual element (`ActionNode`), selecting suggestions, and configuring an associated "qualifier".
+Provide an inline editor experience within a larger application context (e.g., a playlist track) for creating and managing "Action Words". These words represent specific events or actions (incoming triggers, outgoing commands, scheduled events) associated with the track. They reflect the name of the MQTT topic the Playerok will either broadcast or react to. 
+The component facilitates typing a word, converting it into a distinct visual element (`ActionNode`), selecting suggestions, and configuring an associated "qualifier".
 
 **2. Component Hierarchy:**
 *   **`TextEditorPage` (`frontend/src/pages/test_TextEditorPage.jsx`):**
