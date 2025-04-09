@@ -199,38 +199,42 @@ function handleCommitEdit(eventOrValue) {
 
   function handleKeyDown(e) {
     const key = e.key;
+    const refState = suggestionStateRef.current || { highlightedItems: [], selectedIndex: -1, items: registeredActions || [] }; // Get current state from ref
+    const fullItems = refState.items || []; // Full list of actions
+    const maxIndex = fullItems.length > 0 ? fullItems.length - 1 : -1;
+
     if (key === 'ArrowDown' || key === 'Down') {
       e.preventDefault();
       setSuggestionState(prev => {
-        const maxIndex = (prev.highlightedItems && prev.highlightedItems.length > 0) ? prev.highlightedItems.length - 1 : -1;
-        const newIndex = (prev.selectedIndex < maxIndex && prev.selectedIndex >= 0) ? prev.selectedIndex + 1 : 0;
-        console.log('[InlineInput] ArrowDown, newIndex:', newIndex, 'maxIndex:', maxIndex);
+        const currentMaxIndex = (prev.items || []).length - 1;
+        const newIndex = prev.selectedIndex < currentMaxIndex ? prev.selectedIndex + 1 : 0;
+        console.log('[InlineInput] ArrowDown, newIndex:', newIndex, 'maxIndex:', currentMaxIndex);
         return { ...prev, selectedIndex: newIndex };
       });
     } else if (key === 'ArrowUp' || key === 'Up') {
       e.preventDefault();
       setSuggestionState(prev => {
-        const maxIndex = (prev.highlightedItems && prev.highlightedItems.length > 0) ? prev.highlightedItems.length - 1 : -1;
-        const newIndex = prev.selectedIndex > 0 ? prev.selectedIndex - 1 : maxIndex;
-        console.log('[InlineInput] ArrowUp, newIndex:', newIndex, 'maxIndex:', maxIndex);
+        const currentMaxIndex = (prev.items || []).length - 1;
+        const newIndex = prev.selectedIndex > 0 ? prev.selectedIndex - 1 : currentMaxIndex;
+        console.log('[InlineInput] ArrowUp, newIndex:', newIndex, 'maxIndex:', currentMaxIndex);
         return { ...prev, selectedIndex: newIndex };
       });
     } else if (key === 'Enter') {
       e.preventDefault();
-      const refObj = suggestionStateRef && suggestionStateRef.current ? suggestionStateRef.current : { highlightedItems: [], selectedIndex: -1 };
-      const { highlightedItems, selectedIndex } = refObj;
-      console.log('[DEBUG][handleKeyDown] Enter pressed, state:', { highlightedItems, selectedIndex });
-      if (selectedIndex >= 0 && highlightedItems && highlightedItems.length > selectedIndex) {
-        const selectedWord = highlightedItems[selectedIndex];
-        console.log('[DEBUG][handleKeyDown] Enter pressed, attempting to insert suggestion:', selectedWord);
+      const { selectedIndex } = refState; // Use index from ref
+      const currentItems = refState.items || []; // Use full list
+      console.log('[DEBUG][handleKeyDown] Enter pressed, state:', { currentItems, selectedIndex });
+      if (selectedIndex >= 0 && currentItems && currentItems.length > selectedIndex) {
+        const selectedWord = currentItems[selectedIndex];
+        console.log('[DEBUG][handleKeyDown] Enter pressed, attempting to insert selection:', selectedWord);
         if (inputRef.current) {
           inputRef.current.value = selectedWord;
           console.log('[DEBUG][handleKeyDown] Set input value to:', selectedWord);
         }
-        handleCommitEdit(selectedWord); // Pass the word directly
+        handleCommitEdit(selectedWord);
       } else {
         console.log('[DEBUG][handleKeyDown] Enter pressed, committing current input from event:', e.target.value);
-        handleCommitEdit(e); // Pass the event
+        handleCommitEdit(e);
       }
     } else if (key === 'Escape') {
       e.preventDefault();
@@ -283,20 +287,37 @@ function handleCommitEdit(eventOrValue) {
             }}
             onChange={(e) => {
               const query = e.target.value;
-              const newHighlightedItems = filterSuggestions(query, registeredActions); // Calculate new highlighted items
-              const newSelectedIndex = newHighlightedItems.length > 0 ? 0 : -1; // Calculate new selected index
-              console.log('[DEBUG][onChange] Before update:', { query, newHighlightedItems, selectedIndex: suggestionStateRef.current.selectedIndex }); // Log before state update
+              const newHighlightedItems = filterSuggestions(query, registeredActions);
+
+              // Find the index of the first highlighted item in the *full* list
+              let newSelectedIndex = -1;
+              if (newHighlightedItems.length > 0) {
+                const firstHighlighted = newHighlightedItems[0];
+                newSelectedIndex = (registeredActions || []).findIndex(item => item === firstHighlighted);
+              }
+              if (newSelectedIndex === -1 && query && (registeredActions || []).length > 0) {
+                // If no highlight but there's a query, keep selection at 0 or -1 if no items
+                 newSelectedIndex = 0;
+              } else if (!query && (registeredActions || []).length > 0) {
+                 // If query is cleared, reset to 0
+                 newSelectedIndex = 0;
+              }
+
+              console.log('[DEBUG][onChange] Before update:', { query, newHighlightedItems, selectedIndex: suggestionStateRef.current?.selectedIndex });
+
               setSuggestionState(prev => {
+                // Always use the full list for 'items'
+                const fullItems = registeredActions || [];
                 const newState = {
                   ...prev,
                   visible: true,
                   query,
-                  highlightedItems: newHighlightedItems, // Use the calculated items
-                  selectedIndex: newSelectedIndex, // <--- UPDATED HERE
+                  highlightedItems: newHighlightedItems,
+                  selectedIndex: newSelectedIndex, // Set based on first highlighted item's index in full list
                   coords: calculateCoordsForInput(inputRef.current),
+                  items: fullItems, // Ensure full list is passed
                 };
-                console.log('[DEBUG][onChange] After update (prev state):', prev); // Log previous state inside setter
-                console.log('[DEBUG][onChange] After update (new state):', newState); // Log new state inside setter
+                console.log('[DEBUG][onChange] After update (new state):', newState);
                 return newState;
               });
             }}
