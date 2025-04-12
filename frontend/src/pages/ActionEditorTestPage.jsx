@@ -96,11 +96,13 @@ const qualifierOptions = [
   { id: "scheduled", label: "Scheduled" },
 ];
 
-// Default content with dictionary words
-const DEFAULT_CONTENT = `Edit input or output actions here. Try typing action, component, or state.`;
-
 const ActionEditorTestPage = () => {
   const [registeredActions, setRegisteredActions] = useState(Object.keys(HIGHLIGHT_DICTIONARY));
+
+  // --- Step 1: Define initial state for testing ---
+  const initialTestActions = [
+    { id: 'test1', word: 'initial', qualifier: 'incoming' }
+  ];
 
   // Callback handlers
   const handleActionCreated = (word, qualifier) => {
@@ -134,8 +136,8 @@ const ActionEditorTestPage = () => {
           onActionDeleted={handleActionDeleted}
           onQualifierChanged={handleQualifierChanged}
           onActionWordChanged={handleActionWordChanged}
-          initialContent={''}
           placeholder="Type to add actions..."
+          initialActions={initialTestActions}
         />
       </div>
     </div>

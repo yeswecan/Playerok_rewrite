@@ -16,7 +16,10 @@ and configuring an associated "qualifier" for every action node.
     *   Is not part of the component, it's an environment to test it
 *   **`ActionEditorComponent` (`frontend/src/components/ActionEditorComponent.jsx`):**
     *   Main component that implements the Action Editor functionality.
+    *   **Manages the internal state (`actionsState` array) which serves as the single source of truth for the actions.**
     *   Manages the Tiptap editor instance and suggestion menu state.
+    *   **Synchronizes the Tiptap editor view FROM the internal `actionsState` using a debounced mechanism to handle rapid state changes efficiently.**
+    *   **Synchronizes changes made in the Tiptap editor (like node deletions) BACK TO the internal `actionsState`.**
     *   Coordinates between the extension, suggestion list, and action nodes.
     *   Exposes the required callbacks to parent components.
 
@@ -27,12 +30,12 @@ and configuring an associated "qualifier" for every action node.
     *   Contains a dropdown/selector to choose a `qualifier`.
     *   Includes an "x" button (icon) to the right of the word text, within the node boundary, to delete the node.
 *   **`WordSuggestionExtension`:** A Tiptap extension that:
-    *   Detects when the user's cursor is inside a potential action word.
+    *   Detects user input and cursor position relevant to suggestions.
     *   Manages the suggestion menu's state (visibility, items, selection, position).
     *   Handles keyboard navigation (Up, Down, Enter, Escape) for the menu.
-    *   Handles selection updates to keep the menu positioned correctly.
+    *   **Communicates events (like selection, implicit creation triggers) back to `ActionEditorComponent` to update the primary `actionsState`.**
 *   **`SuggestionList`:** A React component that renders the suggestion menu based on state provided by the extension. Handles click selection.
-*   **Conversion Logic (`turnTextIntoActionNode` + Space/Blur/Move handlers):** Logic that automatically converts the currently edited word into an `ActionNode` when the editing context ends for that word.
+*   **Conversion Logic:** Logic within `ActionEditorComponent` that identifies raw text input and triggers updates to the `actionsState` array, which then causes the Tiptap editor to re-render with the new `ActionNode`.
 
 **4. Functionality:**
 
@@ -53,37 +56,41 @@ and configuring an associated "qualifier" for every action node.
 *   **Suggestion Menu Interaction:**
     *   **Keyboard:**
         *   `ArrowDown`/`ArrowUp`: Moves the selection cursor in the list, which is not the same as highlighted items. Selection wraps around all the elements of the menu. (Handled by `WordSuggestionExtension`).
-        *   `Enter`: Selects the currently selected item, triggering the `turnTextIntoActionNode` function for that item, replacing the typed text. Closes menu and blurs editor. (Handled by `WordSuggestionExtension`).
-        *   `Escape`: Closes the menu without selection. Blurs editor. (Handled by `WordSuggestionExtension`).
+        *   `Enter`: Selects the currently selected item. **This triggers an update to the `ActionEditorComponent`'s `actionsState`**. The component then re-renders Tiptap, replacing the text with the node. Closes menu and blurs editor. (Signaled by `WordSuggestionExtension`, handled by `ActionEditorComponent`).
+        *   `Escape`: Closes the menu without selection. Blurs editor. (Signaled by `WordSuggestionExtension`).
         *   Typing keys: since suggestion menu follows the cursor and follows the user
         as they type the action name, the list of highlighted words in the menu reflects the words in the `registeredActions` list that have the word the user is entering in the beginning. Each time user types a key,
         the selection cursor jumps to the first of these, and the menu scrolls to
         show that element. Moving up or down after that moves the cursor normally,
         so that synchronisation between highlighted elements and selection cursor only
         happens when the user types a symbol, other than arrow key.
-    *   **Mouse:** Clicking an item selects it, triggering the `turnTextIntoActionNode` function for that item, replacing the typed text. Closes menu and blurs editor. (Handled by `SuggestionList`).
+        There's no filtering in the suggestion menu, all the available options are always there.
+    *   **Mouse:** Clicking an item selects it. **This triggers an update to the `ActionEditorComponent`'s `actionsState`**. The component then re-renders Tiptap, replacing the text with the node. Closes menu and blurs editor. (Handled by `SuggestionList`, communicated to `ActionEditorComponent`).
 *   **Word-to-Action Conversion (Automatic):**
     *   **Trigger:** Happens when the user stops editing a specific word by:
         1.  Pressing `Space` (outside the inline editor).
-        2.  Moving the cursor *away* from the current word (e.g., clicking elsewhere in the text, using arrow keys to leave the word boundaries).
+        2.  Moving the cursor *away* from the current word (e.g., clicking elsewhere in the text, using arrow keys to leave the word boundaries) - **(Note: Cursor move trigger might be less reliable or deferred depending on implementation details)**.
         3.  The editor loses focus (`Blur` event), *if* an item wasn't explicitly selected from the menu.
     *   **Action:**
-        1.  The word the user was just editing is identified.
+        1.  The word the user was just editing is identified (via analysis of Tiptap state vs. React state).
         2.  It doesn't matter if this word exists in `registeredActions` or not.
-        3.  An `ActionNode` is created using the typed `word` and a default `qualifier`.
-        4.  The original word text is replaced by the new `ActionNode`.
+        3.  **The `ActionEditorComponent` updates its `actionsState` array** with the new action (using a default qualifier).
+        4.  The component's synchronization logic re-renders the Tiptap editor, replacing the original word text with the new `ActionNode`.
         5.  The `onActionCreated(word, qualifier)` callback *must* be triggered, allowing the parent to update `registeredActions` if needed.
+        6.  The editor blurs and the suggestion menu hides.
 *   **`ActionNode` Interaction:**
-    *   **Editing Name:** Double-clicking the word text within the `ActionNode` enters inline edit mode with an input field. Suggestion menu immediately appears (if it was hidden), moving to a cursor inside the inline editor, but following the placement rules outlined in the section about it. Saving the edit (via Enter or blur) updates the node and triggers the `onActionWordChanged(nodeId, newWord)` callback. Pressing Escape cancels editing. After committing or cancelling, the editor automatically blurs, hiding the suggestion menu.
-    *   **Changing Qualifier:** Clicking the `ActionNode`'s dropdown area opens a list of `qualifierOptions`. Selecting a qualifier updates the node's internal state and *must trigger an external event/callback* provided by the parent component (`onQualifierChanged(nodeId, newQualifier)`), passing the node identifier and the new qualifier. There's three possible options - incoming, outgoing and scheduled.
+    *   **Editing Name:** Double-clicking the word text within the `ActionNode` enters inline edit mode with an input field. Suggestion menu immediately appears (if it was hidden), moving to a cursor inside the inline editor, but following the placement rules outlined in the section about it. Saving the edit (via Enter or blur) **triggers an update to the `ActionEditorComponent`'s `actionsState`** and triggers the `onActionWordChanged(nodeId, newWord)` callback. Pressing Escape cancels editing. After committing or cancelling, the editor automatically blurs, hiding the suggestion menu.
+    *   **Changing Qualifier:** Clicking the `ActionNode`'s dropdown area opens a list of `qualifierOptions`. Selecting a qualifier **triggers an update to the `ActionEditorComponent`'s `actionsState`** and *must trigger* the `onQualifierChanged(nodeId, newQualifier)` callback. There's three possible options - incoming, outgoing and scheduled. Opening qualifier menu closes the suggestion menu if it is open and selects the node on which the qualifier menu is.
     *   **Selecting:** pressing anywhere on the node, including on its name and its qualifier menu, selects the node, which means it gets a blue stroke border. Typing before or after the ActionNode or blurring the action editor deselects the node.
-    *   **Deleting:** Clicking the "x" button (located to the right of the word within the node) removes the `ActionNode` from the editor content and *must* trigger the `onActionDeleted(nodeId)` callback. Another way to delete an ActionNode is to select it, press delete or backspace. A placeholder exists to make it possible to show a modal window prompting the user to ask if they want to delete the action. Therefore the responsibility to modify the state will lie on the parent component.
+    *   **Deleting:** Clicking the "x" button OR selecting the node and pressing Delete/Backspace **triggers an update to the `ActionEditorComponent`'s `actionsState`** and *must* trigger the `onActionDeleted(nodeId)` callback. Another way to delete an ActionNode is to select it, press delete or backspace. A placeholder exists to make it possible to show a modal window prompting the user to ask if they want to delete the action. Therefore the responsibility to modify the state will lie on the parent component.
 
 **5. Key Data & Configuration:**
 *   `registeredActions`: A list/map of known action words, provided and potentially updated by the parent component/external system. Used to populate/filter the suggestion list.
 *   `qualifierOptions`: Static list of available qualifiers (e.g., `[{ id: 'todo', label: 'To Do' }, ...]`). Provided by the parent.
 *   `suggestionState`: Internal React state (`useState`) holding menu data (`visible`, `items`, `highlightedItems`, `coords`, `selectedIndex`, `query`).
-*   **External state:** The component manages the state that it doesn't own. So it should have facilities to reflect a state changed outside of it at any given point without breaking.
+*   **`actionsState`:** **The primary source of truth, an internal React state (`useState`) array in `ActionEditorComponent` like `[{ id: string, word: string, qualifier: string }, ...]`.**
+*   **External state:** The component manages the state that it doesn't own. **Changes to props like `initialActions` should correctly re-initialize or update the internal `actionsState` and subsequently the editor view.**
+*   **Synchronization:** The component uses a **debounced effect** to efficiently synchronize the Tiptap editor view whenever the internal `actionsState` changes. It also listens for editor updates to synchronize deletions back to `actionsState`.
 
 **6. Context Note:**
 This component is intended for use within a larger system managing playlists. The "Actions" represent outgoing commands triggered when a track plays, incoming events that trigger a track, or scheduled playback times. This component allows configuration of these actions for a single track element.
