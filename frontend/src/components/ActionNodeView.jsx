@@ -79,6 +79,11 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
 
   const selectedOptionLabel = qualifierOptions.find(opt => opt.id === qualifier)?.label || qualifierOptions[0].label;
 
+  const handleQualifierChange = (newQualifierId) => {
+    // Call the context function instead, which updates the main state
+    updateActionQualifier(nodeId, newQualifierId);
+  };
+
   const toggleDropdown = (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -99,14 +104,14 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
   // --- Effect to focus input when this node enters edit mode ---
   useEffect(() => {
     if (isCurrentlyEditing && inputRef.current) {
-      console.log(`[ActionNodeView useEffect isCurrentlyEditing=true] Focusing input for node ${nodeId}`);
+      // console.log(`[ActionNodeView useEffect isCurrentlyEditing=true] Focusing input for node ${nodeId}`);
       // Focus MUST happen before getBoundingClientRect, but might need timeout
       inputRef.current.focus();
       inputRef.current.select();
 
       // Calculate coords now that input is likely rendered and focused
       const coords = calculateCoordsForInput(inputRef.current);
-      console.log(`[ActionNodeView useEffect isCurrentlyEditing=true] Calculated Coords:`, coords);
+      // console.log(`[ActionNodeView useEffect isCurrentlyEditing=true] Calculated Coords:`, coords);
 
       if (coords) {
         // Update parent state with coords and visibility
@@ -122,10 +127,9 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
           highlightedIndices: prev.highlightedIndices,
           selectedIndex: prev.selectedIndex,
         }));
-        // Optionally trigger nonce again if parent needs another update cycle
         // hintContext.requestStateUpdate?.('inline-edit-coords-ready');
       } else {
-        console.error(`[ActionNodeView useEffect isCurrentlyEditing=true] Failed to calculate coords for ${nodeId}`);
+        // console.error(`[ActionNodeView useEffect isCurrentlyEditing=true] Failed to calculate coords for ${nodeId}`);
         // Hide suggestions if coords failed
         stopInlineEdit(); // Tell parent to stop if coords fail
       }
@@ -207,7 +211,7 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
       onDoubleClick={() => {
         if (!isCurrentlyEditing) { // Only trigger if not already editing
           originalWordRef.current = node.textContent || ''; // Ensure it's a string
-          console.log(`[ActionNodeView onDoubleClick WRAPPER] Setting isEditing=true for node ${nodeId}`);
+          // console.log(`[ActionNodeView onDoubleClick WRAPPER] Setting isEditing=true for node ${nodeId}`);
           startInlineEdit(nodeId, originalWordRef.current); // Tell parent to start editing this node
         }
       }}
@@ -295,8 +299,8 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      setIsOpen(false); // Close dropdown
-                      // Call context function to update state
+                      setIsOpen(false);
+                      // Call the context function directly
                       updateActionQualifier(nodeId, option.id);
                     }}
                     className="block w-full text-left px-4 py-2 hover:bg-gray-100 first:rounded-t-md last:rounded-b-md"

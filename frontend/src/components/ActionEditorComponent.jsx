@@ -20,6 +20,8 @@ export const HintContext = createContext({
     setSuggestionState: () => {},
     registeredActions: [],
     suggestionStateRef: { current: null },
+    openQualifierNodeId: null,
+    setOpenQualifierNodeId: (nodeId) => {},
 });
 
 // --- Custom TipTap Node for Actions ---
@@ -118,7 +120,7 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
   const originalWordRef = useRef(node.textContent);
   const { qualifier, nodeId } = node.attrs || {};
   const hintContext = useContext(HintContext);
-  const { showHint, hideHint, updateActionWord, onActionDeleted, updateActionQualifier, setSuggestionState, registeredActions, suggestionStateRef, editorContainerRef, editingNodeId } = hintContext;
+  const { showHint, hideHint, updateActionWord, onActionDeleted, updateActionQualifier, setSuggestionState, registeredActions, suggestionStateRef, editorContainerRef, editingNodeId, openQualifierNodeId, setOpenQualifierNodeId } = hintContext;
   const wrapperRef = useRef(null);
 
   useEffect(() => {
@@ -135,6 +137,13 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [isOpen]);
+
+  // --- Effect to close dropdown if another one opens or editor blurs ---
+  useEffect(() => {
+    if (isOpen && openQualifierNodeId !== nodeId) {
+      setIsOpen(false);
+    }
+  }, [isOpen, openQualifierNodeId, nodeId]);
 
   // --- Add Effect to calculate and set coords for inline editing ---
   useEffect(() => {
@@ -185,14 +194,25 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
     e.preventDefault();
     e.stopPropagation();
     setIsOpen(!isOpen);
+    if (!isOpen) {
+        // Opening the dropdown
+        setOpenQualifierNodeId(nodeId); // Register this node as having the open dropdown
+        setSuggestionState(prev => ({ ...prev, visible: false })); // Hide suggestions
+    } else {
+        // Closing the dropdown
+        setOpenQualifierNodeId(null);
+    }
   };
 
   const selectQualifier = (e, id) => {
     e.preventDefault();
     e.stopPropagation();
     setIsOpen(false);
+    setOpenQualifierNodeId(null); // Ensure it's marked as closed
     setTimeout(() => {
       hintContext.updateActionQualifier(nodeId, id);
+      // Explicitly blur the main editor after selecting a qualifier
+      editor?.commands.blur();
     }, 0);
   };
 
@@ -329,7 +349,7 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
             contentEditable="false"
             suppressContentEditableWarning={true}
             onDoubleClick={() => {
-              // console.log('[DoubleClick] Entering edit mode for node:', nodeId, 'word:', node.textContent);
+              console.log('[ActionEditorComponent] Editor activated/Suggestion menu triggered due to: Node Double-Click (Inline Edit)');
               originalWordRef.current = node.textContent;
               setIsEditing(true);
               // We need to set the state immediately to trigger the useEffect in ActionNodeView
@@ -376,7 +396,7 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
               <div
                 className="absolute top-full left-0 mt-1 w-32 bg-white shadow-lg rounded-md border border-gray-200 z-50"
                 onMouseDown={(e) => {
-                  // No preventDefault() here
+                  e.preventDefault();
                 }}
               >
                 {qualifierOptions.map((option) => (
@@ -402,6 +422,8 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
             }}
             className="flex items-center justify-center px-1 py-0.5 bg-yellow-300 hover:bg-yellow-400 text-gray-800 border-l border-yellow-300 rounded-r transition-colors"
             title="Delete action"
+            contentEditable="false"
+            suppressContentEditableWarning={true}
           >
             ×
           </button>
@@ -789,6 +811,7 @@ const ActionEditorComponent = ({
     inserting: false,
   });
   const suggestionStateRef = useRef(suggestionState); // Ref for suggestion state
+  const [openQualifierNodeId, setOpenQualifierNodeId] = useState(null); // <-- Add state for open qualifier
 
   const onActionWordChangedRef = useRef(onActionWordChanged);
   const onQualifierChangedRef = useRef(onQualifierChanged);
@@ -911,12 +934,26 @@ const ActionEditorComponent = ({
 
   const updateActionQualifier = useCallback((nodeId, newQualifier) => {
     preventImplicitCreationRef.current = true; // Prevent sync loop
-//    console.log('[ActionEditorComponent] Updating qualifier for node:', nodeId, 'to:', newQualifier);
-    setActionsState(prev => prev.map(action =>
+    const currentEditor = editorInstanceRef.current;
+    console.log('[ActionEditorComponent] Updating qualifier START for node:', nodeId, 'to:', newQualifier); // <-- ADDED Log
+    setActionsState(prev => {
+      const newState = prev.map(action =>
         action.id === nodeId ? { ...action, qualifier: newQualifier } : action
-    ));
+      );
+      console.log('[ActionEditorComponent] actionsState AFTER setActionsState:', newState); // <-- ADDED Log
+      return newState;
+    });
+
     onQualifierChangedRef.current?.(nodeId, newQualifier);
-    setTimeout(() => preventImplicitCreationRef.current = false, 0);
+    setOpenQualifierNodeId(null); // Close the qualifier dropdown immediately
+
+    setTimeout(() => {
+        preventImplicitCreationRef.current = false; // Delay releasing the lock slightly
+        // Try blurring explicitly after a short delay
+        if (currentEditor && !currentEditor.isDestroyed) {
+            currentEditor.commands.blur();
+        }
+    }, 50);
   }, []); // Empty dependency array as it doesn't depend on changing props/state
 
 
@@ -1123,6 +1160,7 @@ const ActionEditorComponent = ({
 //        console.log('[showSuggestionsOnFocus] Editor not ready or not focused.');
         return; // Don't show if not focused
     }
+    console.log('[ActionEditorComponent] Editor activated/Suggestion menu triggered due to: Editor Focus'); // <--- ADDED LOG
 
     const { state } = currentEditor;
     const { selection } = state;
@@ -1255,17 +1293,8 @@ const ActionEditorComponent = ({
   const hintContextValue = useMemo(() => ({
     showHint,
     hideHint,
-    onActionWordChanged: (nodeId, newWord) => {
-      // console.log('Context: onActionWordChanged called', nodeId, newWord);
-      // Placeholder: Implement Step 5 later
-    },
     updateActionQualifier, // Pass the actual function
-    updateActionWord: (nodeId, newWord) => {
-        // Placeholder: Implement Step 5 later
-    },
-    deleteAction: (nodeId) => {
-        // Placeholder: Implement Step 6 later
-    },
+    updateActionWord, // Pass the actual function for word updates (used in handleCommitEdit)
     setSuggestionState,
     registeredActions, // Pass down registered actions for filtering
     suggestionStateRef, // Pass the ref
@@ -1277,14 +1306,14 @@ const ActionEditorComponent = ({
     // --- New additions for state management ---
     actionsState: actionsStateRef.current, // Provide current state via ref if needed downstream (use cautiously)
     addAction,
-    updateActionQualifier,
-    updateActionWord,
-    // --- Inline Edit Management ---
     editingNodeId: suggestionState.editingNodeId, // Pass current editing ID
     startInlineEdit,
     stopInlineEdit,
     requestStateUpdate: (reason) => setUpdateRequestNonce(n => n + 1), // Pass nonce trigger
     checkAndTriggerImplicitCreation, // Pass the new handler
+    // --- Additions for qualifier control ---
+    openQualifierNodeId,
+    setOpenQualifierNodeId,
   }), [
     showHint, hideHint, registeredActions, qualifierOptions,
     suggestionStateRef, setSuggestionState,
@@ -1292,7 +1321,9 @@ const ActionEditorComponent = ({
     suggestionState.editingNodeId, startInlineEdit, stopInlineEdit,
     editorContainerRef,
     onQualifierChangedRef, onActionDeletedRef, defaultQualifierRef,
-    checkAndTriggerImplicitCreation
+    checkAndTriggerImplicitCreation,
+    // --- Additions for qualifier control ---
+    openQualifierNodeId, setOpenQualifierNodeId
   ]);
 
   // --- Configure Extensions ---
@@ -1494,6 +1525,8 @@ const ActionEditorComponent = ({
                     view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, selection.from)));
                     // console.log('Node selection cleared on blur');
                 }
+                // --- Close qualifier dropdown on editor blur ---
+                setOpenQualifierNodeId(null);
                 return false;
               },
             },
