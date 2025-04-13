@@ -236,14 +236,16 @@ Okay, let's create a refactoring plan to shift the state management responsibili
         3.  Modify `ActionNodeView.jsx`:
             *   Inject a `deleteAction` function (which calls `setActionsState`) via `HintContext`.
             *   Ensure the 'x' button's `onClick` handler calls `hintContext.deleteAction(node.attrs.nodeId);` (It should *not* directly modify Tiptap).
+            *   Ensure the 'x' button's `onClick` handler calls Tiptap's `deleteNode()` function. This triggers the necessary editor update event for `handleDocumentChange` to detect the deletion.
     *   **Verification:**
-        0. Test the action node selection: by pressing on the qualifier dropdown, pressing once on the name, or 
-        pressing on the node otherwise. Selection appears as a thin line of different color (e.g. blue against node's yellow) around the node
+        0.  **Test Node Selection:** Click anywhere on an `ActionNode` (word, qualifier button). 
+            *   **Result:** The node receives a blue ring (`ring-2 ring-blue-500`) via CSS targeting `.ProseMirror-selectednode .action-node-view`. Clicking the word text does *not* place a text cursor due to `contentEditable="false"` and `suppressContentEditableWarning` on the inner `span`. Clicking the qualifier button does *not* make it editable due to `contentEditable="false"` and `suppressContentEditableWarning` on the button itself, and clicks are prevented from interfering via `onMouseDown={(e) => e.preventDefault()}`.
         1.  **Test Deletion via 'x' Button:** Load `ActionEditorTestPage`. Click the 'x' button on an action node (e.g., "initial").
-        2.  Verify Console Logs: `[handleDocumentChange] Doc changed...`, `[handleDocumentChange] Detected deleted action nodes: ...`, `[ActionEditorTestPage] Action deleted: ...`.
+        2.  Verify Parent Callback: `[ActionEditorTestPage] Action deleted: test1` log appears in the console.
         3.  Verify Visuals: The action node disappears from the editor.
-        4.  **Test Deletion via Keyboard:** Add another action (e.g., "tempaction"). Click on the "tempaction" node to select it (it should get a border). Press the `Delete` key. Verify the same logs and visual removal as clicking the 'x' button. Repeat the keyboard test using the `Backspace` key.
-        5.  Verify State: After deletion, add a *new* action. Confirm that the previously deleted action does *not* reappear (ensuring `actionsState` was correctly updated).
+        4.  Verify Focus/Suggestion: The editor loses focus (`blur()`) after deletion, and the suggestion menu does *not* appear automatically.
+        5.  **Test Deletion via Keyboard:** Add another action (e.g., "tempaction"). Click on the "tempaction" node to select it (blue ring appears). Press the `Delete` key. Verify the same parent callback log (for the correct ID), visual removal, and focus behavior as clicking the 'x' button. Repeat the keyboard test using the `Backspace` key.
+        6.  Verify State: After deletion (either method), add a *new* action. Confirm that the previously deleted action does *not* reappear (ensuring `actionsState` was correctly updated by `handleDocumentChange`).
 
 **Phase 3: Finalize Synchronization and Cleanup**
 

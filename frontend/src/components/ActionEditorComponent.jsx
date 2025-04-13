@@ -871,6 +871,19 @@ const ActionEditorComponent = ({
     suggestionStateRef.current = suggestionState;
   }, [suggestionState]);
 
+  // --- Step 8: Add Effect to sync actionsState with initialActions prop ---
+  useEffect(() => {
+    // console.log('[ActionEditorComponent Prop Sync Effect] initialActions prop changed:', initialActions);
+    // Update internal state ONLY if the prop value is actually different 
+    // from the current state to avoid unnecessary re-renders/syncs.
+    // Simple length check + deep comparison might be needed for robustness, 
+    // but for now, let's assume the parent sends a new array instance on change.
+    if (initialActions !== actionsStateRef.current) { // Basic check
+        // console.log('[ActionEditorComponent Prop Sync Effect] Updating internal actionsState.');
+        setActionsState(initialActions || []);
+    }
+  }, [initialActions]); // Dependency array includes initialActions
+
   // Placeholder hint functions (implement actual logic if needed)
   const showHint = useCallback((rect, word) => {
     // console.log('showHint called:', rect, word);
@@ -1023,18 +1036,18 @@ const ActionEditorComponent = ({
       const deletedIds = [...currentStateIds].filter(id => !currentEditorNodeIds.has(id));
 
       if (deletedIds.length > 0) {
-        // console.log('[handleDocumentChange] Detected deleted action node IDs:', deletedIds); // REMOVE TEMP LOG
+        // console.log('[handleDocumentChange] Detected deleted action node IDs:', deletedIds);
         preventImplicitCreationRef.current = true; // Prevent potential race condition with implicit creation
         setActionsState(prev => prev.filter(action => currentEditorNodeIds.has(action.id)));
         deletedIds.forEach(id => {
-            // console.log(`[handleDocumentChange] Calling onActionDeleted for ID: ${id}`); // REMOVE TEMP LOG
+            // console.log(`[handleDocumentChange] Calling onActionDeleted for ID: ${id}`);
             onActionDeletedRef.current?.(id);
         });
         // Release the lock shortly after AND blur the editor
         setTimeout(() => {
             preventImplicitCreationRef.current = false;
             editorInstanceRef.current?.commands.blur(); // Blur the editor
-        }, 50); 
+        }, 50);
       }
     };
 
