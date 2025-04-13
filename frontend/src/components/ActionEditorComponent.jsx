@@ -72,6 +72,7 @@ const ActionNode = Node.create({
        'data-type': 'action-node',
        'data-node-id': node.attrs.nodeId,
        'data-qualifier': node.attrs.qualifier,
+       'contenteditable': 'false',
      });
      return [
         'span',
@@ -103,6 +104,9 @@ const ActionNode = Node.create({
       },
     };
   },
+
+  // Ensure it's treated as a single block
+  atom: true,
 });
 
 // --- React Component for the Action Node View ---
@@ -114,7 +118,7 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
   const originalWordRef = useRef(node.textContent);
   const { qualifier, nodeId } = node.attrs || {};
   const hintContext = useContext(HintContext);
-  const { showHint, hideHint, onActionWordChanged, onActionDeleted, onQualifierChanged, setSuggestionState, registeredActions, suggestionStateRef } = hintContext;
+  const { showHint, hideHint, updateActionWord, onActionDeleted, updateActionQualifier, setSuggestionState, registeredActions, suggestionStateRef, editorContainerRef, editingNodeId } = hintContext;
   const wrapperRef = useRef(null);
 
   useEffect(() => {
@@ -131,6 +135,42 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [isOpen]);
+
+  // --- Add Effect to calculate and set coords for inline editing ---
+  useEffect(() => {
+      if (isEditing && inputRef.current && editorContainerRef?.current) {
+          const inputRect = inputRef.current.getBoundingClientRect();
+          const containerRect = editorContainerRef.current.getBoundingClientRect();
+
+          // Calculate position relative to the document body for the portal
+          const portalCoords = {
+              x: inputRect.left + window.scrollX,
+              y: inputRect.bottom + window.scrollY + 5, // Position below the input
+              // Additional coords if needed for positioning logic (like calculateSuggestionPosition)
+              inputBottom: inputRect.bottom,
+              inputTop: inputRect.top,
+              inputLeft: inputRect.left,
+          };
+
+          // console.log('[ActionNodeView Effect] Calculated inline edit coords:', portalCoords);
+
+          // Update suggestion state with new coords and make visible
+          setSuggestionState(prev => ({
+              ...prev,
+              coords: portalCoords,
+              visible: true, // Make visible now that coords are calculated
+          }));
+      }
+  }, [isEditing, editorContainerRef, setSuggestionState]); // Dependencies
+
+  // --- Add Effect to automatically close editor if context changes ---
+  useEffect(() => {
+    if (isEditing && editingNodeId !== nodeId) {
+      // console.log(`[ActionNodeView Effect] Context changed editingNodeId (${editingNodeId}), closing editor for node ${nodeId}`);
+      setIsEditing(false);
+      // Optionally reset internal suggestion state if needed, although handleCommitEdit/updateActionWord should handle central state
+    }
+  }, [isEditing, editingNodeId, nodeId]);
 
   // Get qualifierOptions from props via context
   const { qualifierOptions } = useContext(HintContext);
@@ -179,31 +219,19 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
     const newWord = value.trim();
     // console.log('[handleCommitEdit] Attempting to commit value:', newWord, 'Original:', originalWordRef.current);
     if (newWord && newWord !== originalWordRef.current) {
-      try {
-        const pos = getPos();
-        if (typeof pos === 'number') {
-          const from = pos + 1;
-          const to = from + originalWordRef.current.length;
-          // console.log(`[handleCommitEdit] Replacing range: from=${from}, to=${to} with text: "${newWord}"`);
-
-          editor
-            .chain()
-            .insertContentAt({ from, to }, newWord )
-            .run();
-
-          // console.log('[handleCommitEdit] Tiptap chain executed.');
-          onActionWordChanged(node.attrs.nodeId, newWord);
-        } else {
-          console.error('[handleCommitEdit] Invalid position:', pos); // Keep error logs? Maybe.
-        }
-      } catch (err) {
-        console.error('[handleCommitEdit] Error updating ActionNode word:', err); // Keep error logs? Maybe.
-      }
+      hintContext.updateActionWord(node.attrs.nodeId, newWord); // Use context function
+      // console.log('[handleCommitEdit] Called hintContext.updateActionWord');
     } else {
       // console.log('[handleCommitEdit] No changes detected or word is empty. Reverting or keeping original.');
+      // If the word is empty, maybe delete the node? Or revert? For now, just close editing.
+      if (!newWord) {
+         console.warn('[handleCommitEdit] Word is empty. Edit cancelled.');
+      }
     }
     setIsEditing(false);
-    setSuggestionState(prev => ({ ...prev, visible: false, forceVisible: false, editingNodeId: null }));
+    // Clear suggestion state fully when editing stops
+    setSuggestionState(prev => ({ ...prev, visible: false, forceVisible: false, editingNodeId: null, coords: null, query: '', items: [], selectedIndex: -1 }));
+    editor?.chain()?.focus()?.run(); // Refocus editor after commit
   }
 
   function handleKeyDown(e) {
@@ -237,10 +265,12 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
       if (refState.visible && selectedIndex >= 0 && items && items.length > selectedIndex) {
         const selectedWord = items[selectedIndex];
         // console.log('[InlineInput Enter Key] Selecting suggestion:', selectedWord);
-        handleCommitEdit(selectedWord);
+        // Directly update state via context, which will also clear editingNodeId
+        updateActionWord(nodeId, selectedWord);
+        // setIsEditing(false); // Let the useEffect handle closing based on context change
       } else {
         // console.log('[InlineInput Enter Key] Committing current input value:', e.target.value);
-        handleCommitEdit(e.target.value);
+        handleCommitEdit(e.target.value); // Commit current input if no suggestion selected
       }
     } else if (key === 'Escape') {
       e.preventDefault();
@@ -269,18 +299,21 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
                 onKeyDown={handleKeyDown}
                 onChange={(e) => {
                     const query = e.target.value;
+                    // Don't recalculate coords here, rely on the useEffect
+                    // console.log('[InlineInput onChange] Updating suggestions query:', query);
                     setSuggestionState(prev => {
                         const filtered = filterSuggestions(query, registeredActions);
-                        const coords = calculateCoordsForInput(inputRef.current);
-                        // console.log('[InlineInput onChange] Updating suggestions:', { query, filtered, coords });
+                        // Keep existing coords, just update query/items/index
                         return {
                             ...prev,
-                            visible: true,
-                            forceVisible: true,
+                            // visible: true, // Keep visibility managed by useEffect/blur
+                            // forceVisible: true, // Keep visibility managed by useEffect/blur
                             query,
-                            highlightedItems: filtered,
-                            selectedIndex: filtered.length > 0 ? 0 : -1,
-                            coords,
+                            items: registeredActions, // Show all items
+                            highlightedItems: filtered, // Keep track of items matching query
+                            highlightedIndices: filtered.map(item => registeredActions.indexOf(item)).filter(i => i !== -1), // Calculate indices to highlight
+                            selectedIndex: filtered.length > 0 ? registeredActions.indexOf(filtered[0]) : -1, // Select first match
+                            // coords: prev.coords, // Keep existing coords from effect
                             editingNodeId: nodeId
                         };
                     });
@@ -297,25 +330,30 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
               // console.log('[DoubleClick] Entering edit mode for node:', nodeId, 'word:', node.textContent);
               originalWordRef.current = node.textContent;
               setIsEditing(true);
+              // We need to set the state immediately to trigger the useEffect in ActionNodeView
+              const initialQuery = node.textContent;
+              setSuggestionState(prev => ({
+                  ...prev,
+                  editingNodeId: nodeId,
+                  query: initialQuery,
+                  visible: false, // Initially hidden until coords are calculated
+                  forceVisible: true, // Flag to indicate inline edit mode
+                  coords: null, // Reset coords
+                  items: registeredActions,
+                  highlightedIndices: filterSuggestions(initialQuery, registeredActions).map(item => registeredActions.indexOf(item)).filter(i => i !== -1),
+                  selectedIndex: filterSuggestions(initialQuery, registeredActions).map(item => registeredActions.indexOf(item)).filter(i => i !== -1)[0] ?? -1,
+              }));
+
+              // Focus the input after the state update allows it to render
               setTimeout(() => {
                 inputRef.current?.focus();
                 inputRef.current?.select();
-                const initialQuery = node.textContent;
-                const initialFiltered = filterSuggestions(initialQuery, registeredActions);
-                const initialCoords = calculateCoordsForInput(inputRef.current);
-                // console.log('[DoubleClick] Setting initial suggestion state:', { initialQuery, initialFiltered, initialCoords });
-                setSuggestionState(prev => ({
-                    ...prev,
-                    visible: true,
-                    forceVisible: true,
-                    query: initialQuery,
-                    items: registeredActions,
-                    highlightedItems: initialFiltered,
-                    selectedIndex: initialFiltered.length > 0 ? 0 : -1,
-                    coords: initialCoords,
-                    editingNodeId: nodeId
-                }));
+                // Coords are calculated in the useEffect now
               }, 0);
+            }}
+            onMouseDown={(e) => {
+                // Prevent single click from placing cursor or triggering unwanted focus inside the text span
+                e.preventDefault();
             }}
           >
             {node.textContent || '...'}
@@ -398,6 +436,7 @@ const WordSuggestionExtension = Extension.create({
       // requestStateUpdate: (reason) => { console.log('[WordSuggestionExtension] requestStateUpdate called:', reason); },
       requestStateUpdate: (reason) => {}, // Quieten this
       handleImplicitCreate: (word) => { console.warn('[WordSuggestionExtension] handleImplicitCreate not configured!'); }, // Keep warn?
+      showSuggestionsOnFocus: () => {}, // New function to show suggestions on focus
     };
   },
 
@@ -581,7 +620,7 @@ const WordSuggestionExtension = Extension.create({
 
   onFocus({ editor }) {
     // console.log('[WordSuggestionExtension:onFocus] Fired.');
-    this.options.requestStateUpdate('focus');
+    this.options.showSuggestionsOnFocus(); // Call the function passed from ActionEditorComponent
   },
 
   onUpdate({ editor }) {
@@ -642,16 +681,22 @@ const WordSuggestionExtension = Extension.create({
   onBlur({ editor, event }) {
     // console.log('[WordSuggestionExtension:onBlur] BLUR EVENT DETECTED!');
     const relatedTarget = event.relatedTarget;
+
+    // Check if blur is going towards the suggestion list or an action node's interactive parts
     if (relatedTarget && (relatedTarget.closest('.suggestion-list') || relatedTarget.closest('.inline-block[data-node-id]'))) {
-        // console.log('[WordSuggestionExtension:onBlur] Blur target is suggestion list or node view, ignoring implicit create.');
-        this.options.requestStateUpdate('blur_to_interactive');
-        return;
+        // console.log('[WordSuggestionExtension:onBlur] Blur target is suggestion list or node view, not hiding.');
+        // Don't hide if focus is moving to the suggestion list or node itself
+    } else {
+      // Otherwise, call the dedicated hide function
+      // console.log('[WordSuggestionExtension:onBlur] Calling hideSuggestionsOnBlur.');
+      this.options.hideSuggestionsOnBlur();
+
+      // Implicit creation logic might still be needed here, depending on requirements
+      // For now, focus is on fixing the hide-on-blur behavior.
+      // this.options.handleImplicitCreate('blur');
     }
-
-    // Call the central handler - it will determine if creation is needed based on previous state
-    this.options.handleImplicitCreate('blur'); // Pass correct trigger reason
-
-    this.options.requestStateUpdate('blur');
+    // Remove unconditional state updates
+    // this.options.requestStateUpdate('blur_event');
   },
 });
 
@@ -716,6 +761,8 @@ const ActionEditorComponent = ({
   const onActionDeletedRef = useRef(onActionDeleted);
   const onActionCreatedRef = useRef(onActionCreated);
 
+  const suggestionListRef = useRef(null); // Define the ref for the suggestion list container
+
   useEffect(() => { onActionWordChangedRef.current = onActionWordChanged; }, [onActionWordChanged]);
   useEffect(() => { onQualifierChangedRef.current = onQualifierChanged; }, [onQualifierChanged]);
   useEffect(() => { onActionDeletedRef.current = onActionDeleted; }, [onActionDeleted]);
@@ -765,6 +812,20 @@ const ActionEditorComponent = ({
     onQualifierChangedRef.current?.(nodeId, newQualifier);
     setTimeout(() => preventImplicitCreationRef.current = false, 0);
   }, []); // Empty dependency array as it doesn't depend on changing props/state
+
+
+  const updateActionWord = useCallback((nodeId, newWord) => {
+    if (!newWord) return; // Don't update to an empty word
+    preventImplicitCreationRef.current = true; // Prevent sync loop
+    console.log('[ActionEditorComponent] Updating word for node:', nodeId, 'to:', newWord);
+    setActionsState(prev => prev.map(action =>
+        action.id === nodeId ? { ...action, word: newWord } : action
+    ));
+    onActionWordChangedRef.current?.(nodeId, newWord);
+    // Clear suggestion state after committing inline edit
+    setSuggestionState(prev => ({ ...prev, visible: false, forceVisible: false, editingNodeId: null }));
+    setTimeout(() => preventImplicitCreationRef.current = false, 0);
+  }, []); // Empty dependency array
 
 
   // --- Helper: Convert actionsState to Tiptap content ---
@@ -848,7 +909,8 @@ const ActionEditorComponent = ({
       // For now, directly update the state, assuming handleCommitEdit in NodeView will handle the visual part if needed (or sync takes over)
       // console.log(`[handleSelect] Inline edit mode. Updating word for node ${currentSuggestionState.editingNodeId} to ${selectedItem}`);
       // updateActionWord(currentSuggestionState.editingNodeId, selectedItem); // Requires updateActionWord to be defined
-      console.warn('[handleSelect] Inline edit selection handling needs updateActionWord (Step 5)');
+      // console.warn('[handleSelect] Inline edit selection handling needs updateActionWord (Step 5)');
+      updateActionWord(currentSuggestionState.editingNodeId, selectedItem); // Use the newly defined function
        setSuggestionState(prev => ({ ...prev, visible: false, forceVisible: false, editingNodeId: null }));
     } else {
       // If not editing inline, add a new action
@@ -858,6 +920,72 @@ const ActionEditorComponent = ({
     // Focus editor after selection
     editorInstanceRef.current?.commands.blur(); // Blur editor after selection/creation
   }, [addAction]); // Add updateActionWord here when implemented
+
+
+  // --- NEW: Function to show suggestions specifically on focus ---
+  const showSuggestionsOnFocus = useCallback(() => {
+    const currentEditor = editorInstanceRef.current;
+    if (!currentEditor || currentEditor.isDestroyed || currentEditor.isFocused === false) {
+        // console.log('[showSuggestionsOnFocus] Editor not ready or not focused.');
+        return; // Don't show if not focused
+    }
+
+    const { state } = currentEditor;
+    const { selection } = state;
+    const isNodeSelection = selection instanceof NodeSelection && selection.node.type.name === 'actionNode';
+    const composing = currentEditor.view.composing;
+
+    // Only proceed if cursor is empty, not selecting node, not composing
+    if (selection.empty && !isNodeSelection && !composing) {
+      // console.log('[showSuggestionsOnFocus] Conditions met, calculating coords...');
+      try {
+          const cursorPos = selection.$head.pos;
+          const absoluteCoords = currentEditor.view.coordsAtPos(cursorPos);
+          const coords = {
+            x: absoluteCoords.left,
+            y: absoluteCoords.bottom + 5,
+            inputBottom: absoluteCoords.bottom,
+            inputTop: absoluteCoords.top,
+            inputLeft: absoluteCoords.left,
+          };
+          const finalPosition = calculateSuggestionPosition(coords);
+          const highlightedIndices = registeredActions.map((_, index) => index); // Highlight all initially
+
+          setSuggestionState(prev => ({
+            ...prev,
+            visible: true,
+            query: '', // No query on initial focus
+            items: registeredActions,
+            highlightedIndices: highlightedIndices,
+            coords: coords,
+            selectedIndex: -1, // No initial selection
+            editingNodeId: null,
+            forceVisible: false,
+            finalPosition: finalPosition,
+          }));
+          // console.log('[showSuggestionsOnFocus] Suggestion state updated.');
+      } catch (e) {
+          console.warn('[showSuggestionsOnFocus] Error calculating coords:', e);
+          setSuggestionState(prev => ({ ...prev, visible: false })); // Hide on error
+      }
+    } else {
+        // console.log('[showSuggestionsOnFocus] Conditions not met (selection not empty, node selected, or composing).');
+    }
+  }, [registeredActions]); // Dependencies
+
+
+  // --- NEW: Function to hide suggestions on blur (if not inline editing) ---
+  const hideSuggestionsOnBlur = useCallback(() => {
+    // Use timeout to allow potential focus shifts (e.g., to suggestion list) to register first
+    setTimeout(() => {
+      if (suggestionStateRef.current.editingNodeId === null) {
+        // console.log('[hideSuggestionsOnBlur] Hiding suggestions (not inline editing).');
+        setSuggestionState(prev => ({ ...prev, visible: false }));
+      } else {
+        // console.log('[hideSuggestionsOnBlur] Not hiding (inline editing active).');
+      }
+    }, 100); // Small delay
+  }, []); // No dependencies needed
 
 
   // --- Suggestion Navigation Handlers ---
@@ -897,6 +1025,38 @@ const ActionEditorComponent = ({
   }, [handleSelect]);
 
 
+  // --- Inline Edit State Management ---
+  const startInlineEdit = useCallback((nodeId, initialQuery) => {
+    console.log(`[ActionEditorComponent] Starting inline edit for node ${nodeId}`);
+    // Need to calculate coords *after* NodeView renders input
+    setSuggestionState(prev => ({
+      ...prev,
+      editingNodeId: nodeId,
+      query: initialQuery,
+      visible: false, // Keep hidden until coords are calculated
+      forceVisible: true,
+      coords: null, // Reset coords
+      items: registeredActions, // Pre-populate items
+      highlightedIndices: filterSuggestions(initialQuery, registeredActions).map(item => registeredActions.indexOf(item)).filter(i => i !== -1),
+      selectedIndex: filterSuggestions(initialQuery, registeredActions).map(item => registeredActions.indexOf(item)).filter(i => i !== -1)[0] ?? -1,
+    }));
+    // Trigger effect update to calculate coords
+    setUpdateRequestNonce(n => n + 1);
+  }, [registeredActions]);
+
+  const stopInlineEdit = useCallback(() => {
+    console.log(`[ActionEditorComponent] Stopping inline edit`);
+    setSuggestionState(prev => ({
+      ...prev,
+      editingNodeId: null,
+      visible: false,
+      forceVisible: false,
+      coords: null,
+      query: '',
+    }));
+  }, []);
+
+
   // Provide context value
   const hintContextValue = useMemo(() => ({
     showHint,
@@ -916,32 +1076,39 @@ const ActionEditorComponent = ({
     registeredActions, // Pass down registered actions for filtering
     suggestionStateRef, // Pass the ref
     qualifierOptions, // Pass qualifier options down
+    editorContainerRef, // Pass the editor container ref down
     onQualifierChanged: onQualifierChangedRef.current, // Pass stable ref
     onActionDeleted: onActionDeletedRef.current,     // Pass stable ref
     defaultQualifier: defaultQualifierRef.current,   // Pass stable ref
     // --- New additions for state management ---
     actionsState: actionsStateRef.current, // Provide current state via ref if needed downstream (use cautiously)
     addAction,
-    // updateActionQualifier: (nodeId, newQualifier) => {
-    //     console.log(\'[HintContext] updateActionQualifier called\', nodeId, newQualifier);
-    //     updateActionQualifier(nodeId, newQualifier);
-    // },
+    updateActionQualifier,
+    updateActionWord,
+    // --- Inline Edit Management ---
+    editingNodeId: suggestionState.editingNodeId, // Pass current editing ID
+    startInlineEdit,
+    stopInlineEdit,
+    requestStateUpdate: (reason) => setUpdateRequestNonce(n => n + 1), // Pass nonce trigger
   }), [
     showHint, hideHint, registeredActions, qualifierOptions,
     suggestionStateRef, setSuggestionState,
-    actionsStateRef, addAction, updateActionQualifier // Removed generateTiptapContent
-]);
+    actionsStateRef, addAction, updateActionQualifier, updateActionWord,
+    suggestionState.editingNodeId, startInlineEdit, stopInlineEdit,
+    editorContainerRef
+  ]);
 
   // --- Configure Extensions ---
   const wordSuggestionExtension = useMemo(() => {
     return WordSuggestionExtension.configure({
       getSuggestionState: () => suggestionStateRef.current,
-      requestCoordUpdate: () => { setUpdateRequestNonce(n => n + 1); }, // Trigger state update for coords too
+      requestCoordUpdate: () => { setUpdateRequestNonce(n => n + 1); },
       registeredActions,
       defaultQualifier: defaultQualifierRef.current,
       editorContainerRef,
-      requestStateUpdate: (reason) => { setUpdateRequestNonce(n => n + 1); }, // Trigger state update effect
-      handleImplicitCreate: (word, reason) => { console.log('Implicit create triggered but not yet implemented:', word, reason); return false; }, // Placeholder for Step 3
+      handleImplicitCreate: (word, reason) => { console.log('Implicit create triggered but not yet implemented:', word, reason); return false; },
+      showSuggestionsOnFocus: showSuggestionsOnFocus, // Pass the new function
+      hideSuggestionsOnBlur: hideSuggestionsOnBlur, // Pass the blur handler
       // --- Pass Navigation Handlers ---
       onNavUp: handleNavUp,
       onNavDown: handleNavDown,
@@ -950,9 +1117,10 @@ const ActionEditorComponent = ({
       // onSelectSuggestion: handleSelect, // If needed for direct item click selection
     });
   }, [
-    registeredActions, defaultQualifierRef, editorContainerRef, // Existing deps
-    handleNavUp, handleNavDown, handleCloseSuggestion, handleSelectByIndex // Add new handlers
-  ]); // Update dependencies
+    registeredActions, defaultQualifierRef, editorContainerRef,
+    handleNavUp, handleNavDown, handleCloseSuggestion, handleSelectByIndex,
+    showSuggestionsOnFocus, hideSuggestionsOnBlur // Add new dependency
+  ]);
 
   const actionNodeExtension = useMemo(() => {
     return ActionNode.configure({
@@ -969,7 +1137,7 @@ const ActionEditorComponent = ({
     wordSuggestionExtension,
   ], [actionNodeExtension, wordSuggestionExtension, placeholder]);
 
-  // --- Effect to update suggestion state based on Tiptap Plugin --- 
+  // --- Effect to update suggestion state based on Tiptap Plugin ---
   useEffect(() => {
     const currentEditor = editorInstanceRef.current;
     if (!currentEditor || currentEditor.isDestroyed) return;
@@ -980,7 +1148,6 @@ const ActionEditorComponent = ({
     const composing = currentEditor.view.composing;
     const isFocused = currentEditor.isFocused; // Get focus state
 
-    // Get plugin state using the stored key
     const pluginKey = currentEditor.storage?.wordSuggestion?.key;
     const pluginState = pluginKey ? pluginKey.getState(state) : null;
 
@@ -988,120 +1155,123 @@ const ActionEditorComponent = ({
     let query = '';
     let coords = null;
     const currentEditingNodeId = suggestionStateRef.current.editingNodeId;
+    const currentCoords = suggestionStateRef.current.coords;
+    let forceVisible = suggestionStateRef.current.forceVisible; // Get current forceVisible state
 
+    // --- Refined Visibility Logic ---
     if (currentEditingNodeId) {
-        // Inline edit mode
-        const inlineInputEl = editorContainerRef.current?.querySelector(`[data-node-id="${currentEditingNodeId}"] input`);
-        if (inlineInputEl) {
-             query = inlineInputEl.value;
-            coords = calculateCoordsForInput(inlineInputEl);
-            shouldBeVisible = true;
-        } else {
-            // Input not found, maybe node was deleted or edit cancelled
-            shouldBeVisible = false;
-        }
-    } else if (pluginState?.active && selection.empty && !isNodeSelection && !composing) {
-        // Regular suggestion mode (plugin is active)
-        query = pluginState.query || '';
-        if (query.trim()) { // Only show if there's a non-whitespace query
-            shouldBeVisible = true;
-            // Calculate coords based on cursor position
-            try {
-                const cursorPos = selection.$head.pos;
-                const absoluteCoords = currentEditor.view.coordsAtPos(cursorPos);
-                coords = {
-                  x: absoluteCoords.left,
-                  y: absoluteCoords.bottom + 5, // Position slightly below cursor line (absolute)
-                };
-            } catch (e) {
-                console.warn('[Suggestion Effect] Error calculating coords:', e);
-                shouldBeVisible = false; // Hide if coords calculation fails
-            }
-            } else {
-            shouldBeVisible = false; // Hide if query is empty/whitespace
-        }
-    } else if (isFocused && selection.empty && !isNodeSelection && !composing) {
-        // --- NEW: Show suggestions on focus even without plugin active/query ---
-        // console.log('[Suggestion Effect] Editor focused, showing all suggestions.');
-        shouldBeVisible = true;
-        query = ''; // No query in this case
-        // Calculate coords based on cursor position
-        try {
-            const cursorPos = selection.$head.pos;
-            const absoluteCoords = currentEditor.view.coordsAtPos(cursorPos);
-            coords = {
-              x: absoluteCoords.left,
-              y: absoluteCoords.bottom + 5, // Position slightly below cursor line (absolute)
-            };
-        } catch (e) {
-            console.warn('[Suggestion Effect - Focus] Error calculating coords:', e);
-            shouldBeVisible = false; // Hide if coords calculation fails
-        }
-    }
+      // --- Inline edit mode ---
+      query = suggestionStateRef.current.query || '';
+      coords = currentCoords; // Coords set by ActionNodeView effect
+      shouldBeVisible = forceVisible && !!coords;
+       // console.log(`[Suggestion Effect - Inline] Node: ${currentEditingNodeId}, Coords: ${!!coords}, forceVisible: ${forceVisible}, shouldBeVisible: ${shouldBeVisible}`);
 
-    // --- Final Visibility Check --- 
-    // Ensure menu is hidden if editor loses focus (unless inline editing)
-    if (!isFocused && !currentEditingNodeId) {
+    } else if (isFocused && !composing) {
+      // --- Regular editor mode (focused, not composing) ---
+      // Check if selection is inside or is an action node
+      const parentIsAction = !selection.empty && selection.$head.parent.type.name === 'actionNode';
+
+      if (isNodeSelection || parentIsAction) {
+          // Don't show suggestions if node is selected or cursor is inside one
+          shouldBeVisible = false;
+          coords = null;
+          forceVisible = false;
+          query = '';
+          // console.log(`[Suggestion Effect - Regular] Hiding: NodeSelection=${isNodeSelection}, ParentIsAction=${parentIsAction}`);
+      } else if (selection.empty) {
+          // Only proceed if cursor is empty (not selecting text range)
+          query = pluginState?.query || ''; // Use plugin query if available
+          try {
+              // Calculate coords based on cursor
+              const cursorPos = selection.$head.pos;
+              const absoluteCoords = currentEditor.view.coordsAtPos(cursorPos);
+              coords = {
+                x: absoluteCoords.left,
+                y: absoluteCoords.bottom + 5,
+                inputBottom: absoluteCoords.bottom,
+                inputTop: absoluteCoords.top,
+                inputLeft: absoluteCoords.left,
+              };
+              shouldBeVisible = true; // Show because editor is focused and cursor is in valid spot
+              // console.log(`[Suggestion Effect - Regular] Showing. Query: "${query}", Coords calculated.`);
+          } catch (e) {
+              console.warn('[Suggestion Effect] Error calculating coords:', e);
+              shouldBeVisible = false;
+              coords = null;
+          }
+          forceVisible = false;
+      } else {
+          // Selection is not empty (text range selected), hide suggestions
+          shouldBeVisible = false;
+          coords = null;
+          forceVisible = false;
+          query = '';
+          // console.log('[Suggestion Effect - Regular] Hiding: Text range selected.');
+      }
+    } else {
+      // --- Hide (Not focused, or composing, and not inline editing) ---
       shouldBeVisible = false;
-    }
 
-    // --- Calculate highlighted indices based on query --- 
+    }
+    // --- End Refined Visibility Logic ---
+
+    // --- Calculate highlighted indices based on query ---
     let highlightedIndices = [];
-    if (shouldBeVisible && query) {
-        const lowerCaseQuery = query.toLowerCase();
-        console.log(`[Suggestion Effect] Query: "${lowerCaseQuery}", Checking against:`, registeredActions); // Log query and list
-        registeredActions.forEach((item, index) => {
-            if (item.toLowerCase().includes(lowerCaseQuery)) {
-                highlightedIndices.push(index);
-            }
-        });
-    } else if (shouldBeVisible && !query) {
-        // If visible due to focus but no query, technically all are highlighted (but no specific selection jump)
-        // highlightedIndices = registeredActions.map((_, index) => index); // Or keep empty?
-        // Let's keep it empty for now, as jump-to-first only makes sense with a query.
+    if (shouldBeVisible) {
+      const lowerCaseQuery = String(query || '').toLowerCase();
+      registeredActions.forEach((item, index) => {
+          if (item.toLowerCase().includes(lowerCaseQuery)) {
+              highlightedIndices.push(index);
+          }
+      });
     }
-    console.log('[Suggestion Effect] Calculated highlightedIndices:', highlightedIndices); // Log indices
+    // console.log('[Suggestion Effect] Calculated highlightedIndices:', highlightedIndices);
 
-    const itemsToShow = registeredActions; // Always use the full list for rendering
+    const itemsToShow = registeredActions;
 
+    const finalPosition = calculateSuggestionPosition(coords);
+
+    // --- Update State (Removed skip logic) ---
     setSuggestionState(prev => {
-        // Determine if a state update is actually needed
         const queryChanged = prev.query !== query;
         const visibilityChanged = prev.visible !== shouldBeVisible;
         const highlightedIndicesChanged = JSON.stringify(prev.highlightedIndices) !== JSON.stringify(highlightedIndices);
         const coordsChanged = JSON.stringify(prev.coords) !== JSON.stringify(coords);
         const editingNodeChanged = prev.editingNodeId !== currentEditingNodeId;
+        const finalPositionChanged = JSON.stringify(prev.finalPosition) !== JSON.stringify(finalPosition);
+        const currentForceVisible = !!currentEditingNodeId && forceVisible;
+        const forceVisibleChanged = prev.forceVisible !== currentForceVisible;
 
-        if (!visibilityChanged && !highlightedIndicesChanged && !coordsChanged && !editingNodeChanged && !queryChanged) {
-            return prev; // No change needed
+        if (!visibilityChanged && !highlightedIndicesChanged && !coordsChanged && !editingNodeChanged && !queryChanged && !finalPositionChanged && !forceVisibleChanged) {
+            // console.log('[Suggestion Effect] No change detected');
+            return prev;
         }
 
         let newSelectedIndex = prev.selectedIndex;
-
-        if (shouldBeVisible && (!prev.visible || queryChanged || highlightedIndicesChanged || !(prev.selectedIndex >= 0 && prev.selectedIndex < itemsToShow.length))) {
-            newSelectedIndex = highlightedIndices.length > 0 ? highlightedIndices[0] : -1; // Jump to first highlighted item index, or -1
-            console.log(`[Suggestion Effect] Query/Highlight Changed: Setting selectedIndex to: ${newSelectedIndex}`); // Log index update
-        }
-
-         // Clear index if not visible
-        if (!shouldBeVisible) {
+        if (visibilityChanged || (shouldBeVisible && (queryChanged || highlightedIndicesChanged))) {
+             newSelectedIndex = highlightedIndices.length > 0 ? highlightedIndices[0] : -1;
+             // console.log(`[Suggestion Effect] Visibility/Query/Highlight Changed: Setting selectedIndex to: ${newSelectedIndex}`);
+        } else if (!shouldBeVisible) {
             newSelectedIndex = -1;
         }
+
+        // console.log(`[Suggestion Effect] Updating State: visible=${shouldBeVisible}, query="${query}", itemsCount=${itemsToShow.length}, highlightedCount=${highlightedIndices.length}, selectedIndex=${newSelectedIndex}, editingNodeId=${currentEditingNodeId}, forceVisible=${currentForceVisible}`);
 
         return {
             ...prev,
             visible: shouldBeVisible,
             query: query,
-            items: itemsToShow, // Full list
-            highlightedIndices: highlightedIndices, // Indices of matching items
+            items: itemsToShow,
+            highlightedIndices: highlightedIndices,
             coords: coords,
             selectedIndex: newSelectedIndex,
-            editingNodeId: currentEditingNodeId, // Reflect current editing node
-            forceVisible: !!currentEditingNodeId, // Keep visible if editing inline
+            editingNodeId: currentEditingNodeId,
+            forceVisible: currentForceVisible,
+            finalPosition: finalPosition,
         };
     });
 
-  }, [editorInstance, registeredActions, updateRequestNonce]); // Depend on editor, actions, and the nonce
+  }, [editorInstance, registeredActions, updateRequestNonce]); // Removed startInlineEdit dependency
 
 
   // --- Render ---
@@ -1138,12 +1308,15 @@ const ActionEditorComponent = ({
         {suggestionState.visible && suggestionState.coords &&
           ReactDOM.createPortal(
             <div
-              className="fixed z-50"
+              className="suggestion-list-portal fixed z-50"
               style={{
-                top: suggestionState.coords.y,
-                left: suggestionState.coords.x
+                 top: suggestionState.coords?.y || 0, // Revert to using coords directly
+                 left: suggestionState.coords?.x || 0, // Revert to using coords directly
+                 opacity: suggestionState.visible ? 1 : 0, // Control visibility via opacity
+                 pointerEvents: suggestionState.visible ? 'auto' : 'none' // Control interaction
               }}
               onMouseDown={(e) => e.preventDefault()}
+              ref={suggestionListRef} // Add a ref to the list container
             >
               <SuggestionList
                 items={suggestionState.items}
@@ -1161,4 +1334,30 @@ const ActionEditorComponent = ({
   );
 };
 
-export default ActionEditorComponent; 
+export default ActionEditorComponent;
+
+
+// Helper outside component to avoid re-creation
+const SUGGESTION_LIST_MAX_HEIGHT = 240; // Corresponds to max-h-60 in Tailwind
+const SUGGESTION_LIST_MARGIN = 10; // Extra margin for spacing
+
+function calculateSuggestionPosition(coords) {
+  if (!coords) return { top: 0, left: 0 };
+
+  const spaceBelow = window.innerHeight - coords.inputBottom;
+  const spaceAbove = coords.inputTop;
+
+  let top;
+  if (spaceBelow >= SUGGESTION_LIST_MAX_HEIGHT + SUGGESTION_LIST_MARGIN || spaceBelow >= spaceAbove) {
+    // Position below
+    top = coords.y; // Already includes small offset
+  } else {
+    // Position above
+    top = coords.top - SUGGESTION_LIST_MAX_HEIGHT; // Use the calculated 'top' coord and subtract estimated height
+  }
+
+  return {
+    top: `${Math.max(0, top)}px`, // Ensure it doesn't go off-screen top
+    left: `${coords.x}px`,
+  };
+} 

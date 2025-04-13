@@ -34,4 +34,18 @@
     width: 0 !important;
     height: 0 !important;
   }
+
+  /* Add this rule for suggestion highlighting inside the components layer */
+  .suggestion-item.highlighted {
+    /* @apply bg-yellow-100 font-semibold !important; */ /* Temporarily use direct CSS */
+    background-color: #fef9c3 !important; /* Tailwind yellow-100 */
+    font-weight: 600 !important; /* Tailwind font-semibold */
+  }
 }
+
+/* Commented out rule - was moved inside @layer components */
+/*
+.suggestion-item.highlighted {
+  @apply bg-yellow-100 font-semibold;
+}
+*/
