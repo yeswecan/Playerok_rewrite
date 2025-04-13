@@ -101,7 +101,8 @@ const ActionEditorTestPage = () => {
 
   // --- Step 1: Define initial state for testing ---
   const initialTestActions = [
-    { id: 'test1', word: 'initial', qualifier: 'incoming' }
+    { id: 'test1', word: 'initial', qualifier: 'incoming' },
+    { id: 'test2', word: 'second', qualifier: 'outgoing' }
   ];
 
   // Callback handlers

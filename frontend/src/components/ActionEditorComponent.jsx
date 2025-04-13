@@ -225,7 +225,7 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
       // console.log('[handleCommitEdit] No changes detected or word is empty. Reverting or keeping original.');
       // If the word is empty, maybe delete the node? Or revert? For now, just close editing.
       if (!newWord) {
-         console.warn('[handleCommitEdit] Word is empty. Edit cancelled.');
+//        console.warn('[handleCommitEdit] Word is empty. Edit cancelled.');
       }
     }
     setIsEditing(false);
@@ -284,7 +284,7 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
   return (
     <NodeViewWrapper
       ref={wrapperRef}
-      className={`inline-block bg-gray-100 rounded px-2 py-1 mx-px text-sm border border-gray-300 cursor-pointer ${selected ? 'ring-2 ring-blue-500' : ''}`}
+      className="action-node-view inline-block bg-gray-100 rounded px-2 py-1 mx-px text-sm border border-gray-300 cursor-pointer"
       data-node-id={nodeId}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
@@ -326,6 +326,8 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
         <span className="inline-flex items-center relative">
           <span
             className="action-word-content inline mr-1"
+            contentEditable="false"
+            suppressContentEditableWarning={true}
             onDoubleClick={() => {
               // console.log('[DoubleClick] Entering edit mode for node:', nodeId, 'word:', node.textContent);
               originalWordRef.current = node.textContent;
@@ -353,7 +355,7 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
             }}
             onMouseDown={(e) => {
                 // Prevent single click from placing cursor or triggering unwanted focus inside the text span
-                e.preventDefault();
+                // Ensure no preventDefault() here
             }}
           >
             {node.textContent || '...'}
@@ -364,6 +366,8 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
             className="flex items-center px-1 py-0.5 bg-yellow-200 border-l border-yellow-300 hover:bg-yellow-300 transition-colors relative"
             aria-haspopup="true"
             aria-expanded={isOpen}
+            contentEditable="false"
+            suppressContentEditableWarning={true}
           >
             <span className="mr-0.5">{selectedOptionLabel}</span>
             <ChevronDown className="w-4 h-4 flex-shrink-0" />
@@ -371,7 +375,9 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
           {isOpen && (
               <div
                 className="absolute top-full left-0 mt-1 w-32 bg-white shadow-lg rounded-md border border-gray-200 z-50"
-                onMouseDown={(e) => e.preventDefault()}
+                onMouseDown={(e) => {
+                  // No preventDefault() here
+                }}
               >
                 {qualifierOptions.map((option) => (
                   <button
@@ -391,8 +397,8 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
           )}
           <button
             onClick={() => {
-              deleteNode();
-              onActionDeleted(node.attrs.nodeId);
+              // Deletion is now handled by handleDocumentChange synchronizing state
+              deleteNode(); // Still need this to trigger the update event for handleDocumentChange
             }}
             className="flex items-center justify-center px-1 py-0.5 bg-yellow-300 hover:bg-yellow-400 text-gray-800 border-l border-yellow-300 rounded-r transition-colors"
             title="Delete action"
@@ -435,7 +441,7 @@ const WordSuggestionExtension = Extension.create({
       editorContainerRef: { current: null },
       // requestStateUpdate: (reason) => { console.log('[WordSuggestionExtension] requestStateUpdate called:', reason); },
       requestStateUpdate: (reason) => {}, // Quieten this
-      handleImplicitCreate: (word, reason) => { console.warn('[WordSuggestionExtension] handleImplicitCreate not configured!', word, reason); return false; }, // Keep warn?
+      // handleImplicitCreate: (word, reason) => { console.warn('[WordSuggestionExtension] handleImplicitCreate not configured!', word, reason); return false; }, // Keep warn?
       showSuggestionsOnFocus: () => {}, // New function to show suggestions on focus
       hideSuggestionsOnBlur: () => {}, // New function to hide suggestions on blur
       onNavUp: () => {}, // Placeholder
@@ -565,7 +571,8 @@ const WordSuggestionExtension = Extension.create({
                             }
                         }
                     } else {
-                        console.warn("[WordSuggestionPlugin apply] Skipping range calculation: $from.parent is missing or has no content.", { fromPos: $from.pos, parentExists: !!$from.parent });
+                        // Log warning only if necessary, maybe add details
+                        // console.warn("[WordSuggestionPlugin apply] Skipping range calculation: $from.parent is missing or has no content.", { fromPos: $from.pos, parentExists: !!$from.parent });
                         next.active = false;
                         next.range = null;
                     }
@@ -584,7 +591,7 @@ const WordSuggestionExtension = Extension.create({
                     !meta.justConvertedImplicit 
                 ) {
                     const trimmedPrevQuery = prev.query.trim();
-                    console.log(`[WordSuggestionExtension Apply] Implicit Create Triggered (Move/Selection Change): Word='${trimmedPrevQuery}'`);
+                    // console.log(`[WordSuggestionExtension Apply] Implicit Create Triggered (Move/Selection Change): Word='${trimmedPrevQuery}'`);
                     const created = ext.options.handleImplicitCreate(trimmedPrevQuery, 'selection');
                     if (created) {
                         tr.setMeta('wordSuggestionPlugin', { ...meta, justConvertedImplicit: true });
@@ -602,7 +609,7 @@ const WordSuggestionExtension = Extension.create({
                 }
 
             } else {
-                console.log('[WordSuggestionExtension Apply] Skipping core logic due to isSyncingContent meta flag.');
+                // console.log('[WordSuggestionExtension Apply] Skipping core logic due to isSyncingContent meta flag.');
                  // If skipping, ensure prev state is cleared if it existed
                  next.active = false;
                  next.range = null;
@@ -619,7 +626,13 @@ const WordSuggestionExtension = Extension.create({
             return next;
           },
         },
-        props: {},
+        props: {
+          // We need to listen to transactions to catch implicit creation confirmations
+          handleTextInput(view, from, to, text) {
+            // Allow default behavior
+            return false;
+          },
+        },
       }),
     ];
   },
@@ -668,23 +681,23 @@ const WordSuggestionExtension = Extension.create({
       },
       // Previous Space shortcut logic (handleImplicitCreate) needs to be reimplemented here in Step 3
       Space: () => {
-          console.log('[WordSuggestionExtension Space Shortcut] Entered.');
+//          console.log('[WordSuggestionExtension Space Shortcut] Entered.');
           // Check the REACT state for suggestion visibility
           const { visible, selectedIndex } = this.options.getSuggestionState();
-          console.log('[WordSuggestionExtension Space Shortcut] Suggestion state:', { visible, selectedIndex });
+//          console.log('[WordSuggestionExtension Space Shortcut] Suggestion state:', { visible, selectedIndex });
 
           // If suggestions are visible AND an item is selected, don't trigger implicit creation
           if (visible && selectedIndex >= 0) {
-              console.log('[WordSuggestionExtension Space Shortcut] Suggestions visible and item selected, but prioritizing implicit creation.');
+//              console.log('[WordSuggestionExtension Space Shortcut] Suggestions visible and item selected, but prioritizing implicit creation.');
               // No longer returning false here. Proceed to attempt creation.
           }
 
           // Otherwise, attempt implicit creation
-          console.log('[WordSuggestionExtension Space Shortcut] Attempting implicit creation...');
+//          console.log('[WordSuggestionExtension Space Shortcut] Attempting implicit creation...');
 
           // Pass null for word, handler will extract
           const created = this.options.handleImplicitCreate(null, 'space');
-          console.log('[WordSuggestionExtension Space Shortcut] handleImplicitCreate returned:', created);
+//          console.log('[WordSuggestionExtension Space Shortcut] handleImplicitCreate returned:', created);
           // Consume space ONLY if creation happened.
           // If created is false, return false to allow default space insertion.
           return created;
@@ -786,12 +799,12 @@ const ActionEditorComponent = ({
 
   // --- Step 3: Analytical Comparison Function ---
   const findUntrackedTextSegments = useCallback((editorJson, currentActionsState) => {
-    console.log('[findUntrackedTextSegments] Comparing Tiptap JSON:', JSON.stringify(editorJson), 'against actionsState:', currentActionsState);
+//    console.log('[findUntrackedTextSegments] Comparing Tiptap JSON:', JSON.stringify(editorJson), 'against actionsState:', currentActionsState);
     const untrackedSegments = [];
     const knownNodeIds = new Set(currentActionsState.map(a => a.id));
 
     const paragraphContent = editorJson?.content?.[0]?.content || [];
-    console.log('[findUntrackedTextSegments] Raw Paragraph Content:', JSON.stringify(paragraphContent));
+//    console.log('[findUntrackedTextSegments] Raw Paragraph Content:', JSON.stringify(paragraphContent));
 
     let currentTextSegment = '';
     let segmentStartIndex = -1; // Simplified position tracking
@@ -805,13 +818,13 @@ const ActionEditorComponent = ({
                 const trimmedText = currentTextSegment.trim();
                 if (trimmedText) {
                     untrackedSegments.push({ text: trimmedText, startPos: segmentStartIndex, endPos: nodeStartPosition });
-                    console.log(`[findUntrackedTextSegments] Found untracked segment (before node): "${trimmedText}"`);
+//                    console.log(`[findUntrackedTextSegments] Found untracked segment (before node): "${trimmedText}"`);
                 }
                 currentTextSegment = '';
                 segmentStartIndex = -1;
             }
             if (!knownNodeIds.has(node.attrs?.nodeId)) {
-                console.warn(`[findUntrackedTextSegments] Found unknown actionNode in Tiptap content: ID ${node.attrs?.nodeId}`);
+//                console.warn(`[findUntrackedTextSegments] Found unknown actionNode in Tiptap content: ID ${node.attrs?.nodeId}`);
             }
         } else if (node.type === 'text') {
             if (segmentStartIndex === -1) {
@@ -824,7 +837,7 @@ const ActionEditorComponent = ({
                  const trimmedText = currentTextSegment.trim();
                  if (trimmedText) {
                     untrackedSegments.push({ text: trimmedText, startPos: segmentStartIndex, endPos: nodeStartPosition });
-                    console.log(`[findUntrackedTextSegments] Found untracked segment (trailing): "${trimmedText}"`);
+//                    console.log(`[findUntrackedTextSegments] Found untracked segment (trailing): "${trimmedText}"`);
                 }
             }
             currentTextSegment = '';
@@ -836,10 +849,10 @@ const ActionEditorComponent = ({
         const trimmedText = currentTextSegment.trim();
         if (trimmedText) {
             untrackedSegments.push({ text: trimmedText, startPos: segmentStartIndex, endPos: paragraphContent.length });
-            console.log(`[findUntrackedTextSegments] Found untracked segment (trailing): "${trimmedText}"`);
+//            console.log(`[findUntrackedTextSegments] Found untracked segment (trailing): "${trimmedText}"`);
         }
     }
-    console.log('[findUntrackedTextSegments] Final Identified Segments:', untrackedSegments);
+//    console.log('[findUntrackedTextSegments] Final Identified Segments:', untrackedSegments);
     return untrackedSegments;
   }, []); // No dependencies, relies on arguments
 
@@ -874,7 +887,7 @@ const ActionEditorComponent = ({
     preventImplicitCreationRef.current = true; // Prevent sync loop
     const uniqueId = `action_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const newAction = { id: uniqueId, word, qualifier: qualifier || defaultQualifierRef.current };
-    console.log('[ActionEditorComponent] Adding action:', newAction);
+//    console.log('[ActionEditorComponent] Adding action:', newAction);
     setActionsState(prev => [...prev, newAction]);
     onActionCreatedRef.current?.(newAction.id, newAction.word, newAction.qualifier);
     // Clear suggestion state after adding
@@ -885,7 +898,7 @@ const ActionEditorComponent = ({
 
   const updateActionQualifier = useCallback((nodeId, newQualifier) => {
     preventImplicitCreationRef.current = true; // Prevent sync loop
-    console.log('[ActionEditorComponent] Updating qualifier for node:', nodeId, 'to:', newQualifier);
+//    console.log('[ActionEditorComponent] Updating qualifier for node:', nodeId, 'to:', newQualifier);
     setActionsState(prev => prev.map(action =>
         action.id === nodeId ? { ...action, qualifier: newQualifier } : action
     ));
@@ -897,7 +910,7 @@ const ActionEditorComponent = ({
   const updateActionWord = useCallback((nodeId, newWord) => {
     if (!newWord) return; // Don't update to an empty word
     preventImplicitCreationRef.current = true; // Prevent sync loop
-    console.log('[ActionEditorComponent] Updating word for node:', nodeId, 'to:', newWord);
+//    console.log('[ActionEditorComponent] Updating word for node:', nodeId, 'to:', newWord);
     setActionsState(prev => prev.map(action =>
         action.id === nodeId ? { ...action, word: newWord } : action
     ));
@@ -912,7 +925,7 @@ const ActionEditorComponent = ({
   const generateTiptapContent = useCallback((actions) => {
     const actionNodesContent = (actions || []).flatMap((action) => {
        if (!action || typeof action.word !== 'string' || typeof action.id !== 'string' || typeof action.qualifier !== 'string') {
-           console.warn('[generateTiptapContent] Skipping invalid action state item:', action);
+//           console.warn('[generateTiptapContent] Skipping invalid action state item:', action);
           return [];
         }
       const nodeJson = {
@@ -998,7 +1011,7 @@ const ActionEditorComponent = ({
             if (node.attrs.nodeId) {
                  currentEditorNodeIds.add(node.attrs.nodeId);
             } else {
-                console.warn('[handleDocumentChange] Found actionNode without nodeId attribute.');
+//                console.warn('[handleDocumentChange] Found actionNode without nodeId attribute.');
             }
         }
       });
@@ -1010,7 +1023,7 @@ const ActionEditorComponent = ({
       const deletedIds = [...currentStateIds].filter(id => !currentEditorNodeIds.has(id));
 
       if (deletedIds.length > 0) {
-        console.log('[handleDocumentChange] Detected deleted action node IDs:', deletedIds);
+//        console.log('[handleDocumentChange] Detected deleted action node IDs:', deletedIds);
         preventImplicitCreationRef.current = true; // Prevent potential race condition with implicit creation
         setActionsState(prev => prev.filter(action => currentEditorNodeIds.has(action.id)));
         deletedIds.forEach(id => {
@@ -1032,7 +1045,7 @@ const ActionEditorComponent = ({
 
   // --- Handle Suggestion Selection ---
   const handleSelect = useCallback((selectedItem) => {
-    console.log(`[handleSelect] Selecting item: ${selectedItem}`);
+//    console.log(`[handleSelect] Selecting item: ${selectedItem}`);
     if (!selectedItem) return;
 
     const currentSuggestionState = suggestionStateRef.current;
@@ -1059,14 +1072,14 @@ const ActionEditorComponent = ({
   const checkAndTriggerImplicitCreation = useCallback((triggerReason = 'unknown') => {
     const currentEditor = editorInstanceRef.current;
     if (!currentEditor || currentEditor.isDestroyed || preventImplicitCreationRef.current) {
-        console.log('[checkAndTriggerImplicitCreation] Skipped: Editor not ready, destroyed, or prevention flag set.');
+//        console.log('[checkAndTriggerImplicitCreation] Skipped: Editor not ready, destroyed, or prevention flag set.');
         return false;
     }
 
     const currentJson = currentEditor.getJSON();
     const currentActions = actionsStateRef.current; // Use ref for current state
 
-    console.log('[checkAndTriggerImplicitCreation] Triggered by:', triggerReason);
+//    console.log('[checkAndTriggerImplicitCreation] Triggered by:', triggerReason);
     const untracked = findUntrackedTextSegments(currentJson, currentActions);
 
     // Simplification: Assume the last untracked text segment is the one to convert.
@@ -1074,13 +1087,13 @@ const ActionEditorComponent = ({
     const wordToConvert = untracked.length > 0 ? untracked[untracked.length - 1].text : null;
 
     if (wordToConvert) {
-        console.log('[checkAndTriggerImplicitCreation] Decided to convert word:', wordToConvert);
+//        console.log('[checkAndTriggerImplicitCreation] Decided to convert word:', wordToConvert);
         addAction(wordToConvert, defaultQualifierRef.current); // Use the existing addAction
         // Ensure suggestion state is cleared after implicit creation
         setSuggestionState(prev => ({ ...prev, visible: false, query: '', items: [], selectedIndex: -1, editingNodeId: null, inserting: false }));
         return true; // Indicate creation happened
     } else {
-        console.log('[checkAndTriggerImplicitCreation] No conversion needed.');
+//        console.log('[checkAndTriggerImplicitCreation] No conversion needed.');
         return false;
     }
   }, [addAction, findUntrackedTextSegments, defaultQualifierRef]); // Added dependencies
@@ -1090,7 +1103,7 @@ const ActionEditorComponent = ({
   const showSuggestionsOnFocus = useCallback(() => {
     const currentEditor = editorInstanceRef.current;
     if (!currentEditor || currentEditor.isDestroyed || currentEditor.isFocused === false) {
-        // console.log('[showSuggestionsOnFocus] Editor not ready or not focused.');
+//        console.log('[showSuggestionsOnFocus] Editor not ready or not focused.');
         return; // Don't show if not focused
     }
 
@@ -1129,11 +1142,11 @@ const ActionEditorComponent = ({
           }));
           // console.log('[showSuggestionsOnFocus] Suggestion state updated.');
       } catch (e) {
-          console.warn('[showSuggestionsOnFocus] Error calculating coords:', e);
+//          console.warn('[showSuggestionsOnFocus] Error calculating coords:', e);
           setSuggestionState(prev => ({ ...prev, visible: false })); // Hide on error
       }
     } else {
-        // console.log('[showSuggestionsOnFocus] Conditions not met (selection not empty, node selected, or composing).');
+//        console.log('[showSuggestionsOnFocus] Conditions not met (selection not empty, node selected, or composing).');
     }
   }, [registeredActions]); // Dependencies
 
@@ -1191,7 +1204,7 @@ const ActionEditorComponent = ({
 
   // --- Inline Edit State Management ---
   const startInlineEdit = useCallback((nodeId, initialQuery) => {
-    console.log(`[ActionEditorComponent] Starting inline edit for node ${nodeId}`);
+//    console.log(`[ActionEditorComponent] Starting inline edit for node ${nodeId}`);
     // Need to calculate coords *after* NodeView renders input
     setSuggestionState(prev => ({
       ...prev,
@@ -1209,7 +1222,7 @@ const ActionEditorComponent = ({
   }, [registeredActions]);
 
   const stopInlineEdit = useCallback(() => {
-    console.log(`[ActionEditorComponent] Stopping inline edit`);
+//    console.log(`[ActionEditorComponent] Stopping inline edit`);
     setSuggestionState(prev => ({
       ...prev,
       editingNodeId: null,
@@ -1346,31 +1359,26 @@ const ActionEditorComponent = ({
           coords = null;
           forceVisible = false;
           query = '';
-          // console.log(`[Suggestion Effect - Regular] Hiding: NodeSelection=${isNodeSelection}, ParentIsAction=${parentIsAction}`);
-      } else if (selection.empty /* && pluginIsActive - REMOVED */) {
-          // Plugin might be active, but we DON'T automatically show the list here anymore.
-          // Visibility is now primarily controlled by showSuggestionsOnFocus or inline edit.
-          query = pluginState?.query || ''; // Use plugin query if available
-          shouldBeVisible = pluginIsActive; // Show if plugin is active
+      } else if (selection.empty) {
+          // Show suggestions if cursor is empty and not in/selecting a node
+          shouldBeVisible = true;
+          query = pluginState?.query || ''; // Use plugin query if available (empty if just placed cursor)
           coords = null; 
-          if (shouldBeVisible) {
-              // If we should be visible, try calculating coords
-              try {
-                  const cursorPos = selection.$head.pos;
-                  const absoluteCoords = currentEditor.view.coordsAtPos(cursorPos);
-                  coords = {
-                      x: absoluteCoords.left,
-                      y: absoluteCoords.bottom + 5,
-                      inputBottom: absoluteCoords.bottom,
-                      inputTop: absoluteCoords.top,
-                      inputLeft: absoluteCoords.left,
-                  };
-                  // console.log(`[Suggestion Effect - Regular] Showing. Query: "${query}", Plugin Active: ${pluginIsActive}, Coords calculated.`);
-              } catch (e) {
-                  console.warn('[Suggestion Effect] Error calculating coords:', e);
-                  shouldBeVisible = false; // Hide if coords fail
-                  coords = null;
-              }
+          // Try calculating coords
+          try {
+              const cursorPos = selection.$head.pos;
+              const absoluteCoords = currentEditor.view.coordsAtPos(cursorPos);
+              coords = {
+                  x: absoluteCoords.left,
+                  y: absoluteCoords.bottom + 5,
+                  inputBottom: absoluteCoords.bottom,
+                  inputTop: absoluteCoords.top,
+                  inputLeft: absoluteCoords.left,
+              };
+          } catch (e) {
+              // console.warn('[Suggestion Effect] Error calculating coords:', e);
+              shouldBeVisible = false; // Hide if coords fail
+              coords = null;
           }
           forceVisible = false;
       } else {
@@ -1379,7 +1387,6 @@ const ActionEditorComponent = ({
           coords = null;
           forceVisible = false;
           query = '';
-          // console.log('[Suggestion Effect - Regular] Hiding: Text range selected.');
       }
     } else {
       // --- Hide (Not focused, or composing, and not inline editing) ---

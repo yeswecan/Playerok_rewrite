@@ -218,10 +218,11 @@ Okay, let's create a refactoring plan to shift the state management responsibili
         7.  Visually confirm the Tiptap node now displays "updatedword".
         8.  Repeat the test, but select a suggestion while editing inline. Ensure the state update mechanism is used.
 
-*   **Step 6: Handle Action Deletion**
+*   **Step 6: Handle Action Selection & Deletion**
     *   **Goal:** Update `actionsState` when an action node is deleted, triggering Tiptap re-render. This should handle deletion via the node's 'x' button and also when the node is selected and the `Delete` or `Backspace` key is pressed.
     *   **Current Implementation Note:** This is likely handled by the `useEffect` hook in `ActionEditorComponent` that listens to `editorInstance.on('update', handleDocumentChange)`. This listener compares the nodes present in the Tiptap document after any change against the `actionsState` and updates the state accordingly.
     *   **Actions:**
+        0. Make sure selectin exists, only one node can be selected, and putting cursor into text editor part when the user creates new nodes remove the selection, and the blur does too.
         1.  Confirm the existence of the `handleDocumentChange` function within a `useEffect` hook in `ActionEditorComponent.jsx` that listens to `editorInstance.on('update')`.
         2.  This function should:
             *   Ignore transactions triggered by the component's own state synchronization (check for `transaction.getMeta('isSyncingContent')`).
@@ -236,6 +237,8 @@ Okay, let's create a refactoring plan to shift the state management responsibili
             *   Inject a `deleteAction` function (which calls `setActionsState`) via `HintContext`.
             *   Ensure the 'x' button's `onClick` handler calls `hintContext.deleteAction(node.attrs.nodeId);` (It should *not* directly modify Tiptap).
     *   **Verification:**
+        0. Test the action node selection: by pressing on the qualifier dropdown, pressing once on the name, or 
+        pressing on the node otherwise. Selection appears as a thin line of different color (e.g. blue against node's yellow) around the node
         1.  **Test Deletion via 'x' Button:** Load `ActionEditorTestPage`. Click the 'x' button on an action node (e.g., "initial").
         2.  Verify Console Logs: `[handleDocumentChange] Doc changed...`, `[handleDocumentChange] Detected deleted action nodes: ...`, `[ActionEditorTestPage] Action deleted: ...`.
         3.  Verify Visuals: The action node disappears from the editor.
