@@ -1023,14 +1023,18 @@ const ActionEditorComponent = ({
       const deletedIds = [...currentStateIds].filter(id => !currentEditorNodeIds.has(id));
 
       if (deletedIds.length > 0) {
-//        console.log('[handleDocumentChange] Detected deleted action node IDs:', deletedIds);
+        // console.log('[handleDocumentChange] Detected deleted action node IDs:', deletedIds); // REMOVE TEMP LOG
         preventImplicitCreationRef.current = true; // Prevent potential race condition with implicit creation
         setActionsState(prev => prev.filter(action => currentEditorNodeIds.has(action.id)));
         deletedIds.forEach(id => {
+            // console.log(`[handleDocumentChange] Calling onActionDeleted for ID: ${id}`); // REMOVE TEMP LOG
             onActionDeletedRef.current?.(id);
         });
-        // Release the lock shortly after
-        setTimeout(() => preventImplicitCreationRef.current = false, 50); 
+        // Release the lock shortly after AND blur the editor
+        setTimeout(() => {
+            preventImplicitCreationRef.current = false;
+            editorInstanceRef.current?.commands.blur(); // Blur the editor
+        }, 50); 
       }
     };
 
