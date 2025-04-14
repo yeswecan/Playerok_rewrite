@@ -39,6 +39,10 @@ and configuring an associated "qualifier" for every action node.
 
 **4. Functionality:**
 
+*   **Placeholder Text:**
+    *   When the main Tiptap editor area is *not* focused (no text cursor active) *and* no `ActionNode` is currently being edited inline, a light gray placeholder text ("Type here to add action...") appears visually appended *after* all existing content (including `ActionNode`s).
+    *   This placeholder is purely visual (implemented via CSS) and does not affect the actual editor content.
+    *   The placeholder disappears as soon as the editor gains focus or an `ActionNode` enters its inline editing state.
 *   **Editing Context & Suggestion Triggering:**
     *   Whenever the Tiptap editor gains focus (cursor is active), the **Suggestion Menu** appears.
     *   The `WordSuggestionExtension` (`onUpdate`) constantly checks the word the cursor is currently *on* or *inside*.
