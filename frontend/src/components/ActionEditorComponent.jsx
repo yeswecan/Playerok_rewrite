@@ -801,7 +801,6 @@ const ActionEditorComponent = ({
   onQualifierChanged,
   onActionWordChanged,
   initialContent = '',
-  placeholder = 'Type to add actions...',
   initialActions = [],
 }) => {
   const [editorInstance, setEditorInstance] = useState(null);
@@ -812,6 +811,7 @@ const ActionEditorComponent = ({
   const preventImplicitCreationRef = useRef(false); // Ref to control implicit creation during sync
   const editorContainerRef = useRef(null); // Define the container ref
   const [updateRequestNonce, setUpdateRequestNonce] = useState(0); // Nonce to trigger suggestion state updates
+  const [isEditorFocused, setIsEditorFocused] = useState(false); // <-- ADDED state for focus tracking
   const [suggestionState, setSuggestionState] = useState({
     visible: false,
     forceVisible: false, // New flag to keep menu open during inline edit
@@ -1373,10 +1373,12 @@ const ActionEditorComponent = ({
 
   const extensions = useMemo(() => [
     StarterKit.configure({ history: true }),
-    Placeholder.configure({ placeholder }),
+    Placeholder.configure({ // Keep Placeholder extension for structure but remove text
+        placeholder: '', // REMOVED text configuration
+     }),
     actionNodeExtension,
     wordSuggestionExtension,
-  ], [actionNodeExtension, wordSuggestionExtension, placeholder]);
+  ], [actionNodeExtension, wordSuggestionExtension]); // REMOVED placeholder prop dependency
 
   // --- Effect to update suggestion state based on Tiptap Plugin ---
   useEffect(() => {
@@ -1533,14 +1535,34 @@ const ActionEditorComponent = ({
             background-color: highlight !important;
             color: highlighttext !important;
           }
+          .ProseMirror p::after {
+            content: ''; /* Default empty content */
+            pointer-events: none;
+            color: #adb5bd; /* Light gray */
+          }
+          .editor-blurred .ProseMirror p::after {
+            content: ' Type here to add action...'; /* Add space at the beginning */
+          }
+          /* Optional: Hide default Tiptap empty node placeholder if it appears */
+          .editor-blurred .ProseMirror p.is-editor-empty::before {
+            content: none;
+          }
         `}
       </style>
-      <div className="relative" ref={editorContainerRef}>
+      <div className={`relative ${!isEditorFocused && !suggestionState.editingNodeId ? 'editor-blurred' : ''}`} ref={editorContainerRef}>
         <EditorProvider
           slotBefore={null}
           slotAfter={null}
           extensions={extensions}
           content={`<p></p>`}
+          onFocus={() => {
+              console.log('Editor Focused');
+              setIsEditorFocused(true);
+          }}
+          onBlur={() => {
+              console.log('Editor Blurred');
+              setIsEditorFocused(false);
+          }}
           editorProps={{
             attributes: {
               class: 'prose max-w-full focus:outline-none min-h-[100px] px-4 py-2',
