@@ -181,6 +181,25 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
     }
   }, [isEditing, editingNodeId, nodeId]);
 
+  // --- Effect to focus input when editing starts ---
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      // Defer focus slightly using setTimeout
+      console.log('[ActionNodeView Focus Effect] Scheduling focus for node:', nodeId);
+      const timeoutId = setTimeout(() => {
+        if (inputRef.current) { // Double-check ref still exists
+            console.log('[ActionNodeView Focus Timeout] Attempting focus for node:', nodeId);
+            inputRef.current.focus();
+            inputRef.current.select();
+        } else {
+            console.log('[ActionNodeView Focus Timeout] inputRef was null for node:', nodeId);
+        }
+      }, 50); // 50ms delay
+      // Cleanup function to clear the timeout
+      return () => clearTimeout(timeoutId);
+    }
+  }, [isEditing, nodeId]); // Depend on isEditing and nodeId
+
   // Get qualifierOptions from props via context
   const { qualifierOptions } = useContext(HintContext);
   const selectedOptionLabel = qualifierOptions.find(opt => opt.id === qualifier)?.label || qualifierOptions[0].label;
@@ -251,7 +270,7 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
     setIsEditing(false);
     // Clear suggestion state fully when editing stops
     setSuggestionState(prev => ({ ...prev, visible: false, forceVisible: false, editingNodeId: null, coords: null, query: '', items: [], selectedIndex: -1 }));
-    editor?.chain()?.focus()?.run(); // Refocus editor after commit
+    setTimeout(() => editor?.commands.blur(), 0); // <-- ADDED Explicit blur
   }
 
   function handleKeyDown(e) {
@@ -297,14 +316,14 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
       // console.log('[InlineInput Escape Key] Cancelling edit.');
       setIsEditing(false);
       setSuggestionState(prev => ({ ...prev, visible: false, forceVisible: false, editingNodeId: null }));
-      editor?.chain().focus().run();
+      setTimeout(() => editor?.commands.blur(), 0); // <-- ADDED Explicit blur
     }
   }
 
   return (
     <NodeViewWrapper
       ref={wrapperRef}
-      className="action-node-view inline-block bg-gray-100 rounded px-2 py-1 mx-px text-sm border border-gray-300 cursor-pointer"
+      className="action-node-view inline-block bg-yellow-100 hover:bg-yellow-200 rounded px-2 py-1 mx-px text-sm border border-yellow-300 cursor-pointer"
       data-node-id={nodeId}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
@@ -352,7 +371,7 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
               console.log('[ActionEditorComponent] Editor activated/Suggestion menu triggered due to: Node Double-Click (Inline Edit)');
               originalWordRef.current = node.textContent;
               setIsEditing(true);
-              // We need to set the state immediately to trigger the useEffect in ActionNodeView
+              // Set suggestion state for inline editing (COORDs calculation moved to effect)
               const initialQuery = node.textContent;
               setSuggestionState(prev => ({
                   ...prev,
@@ -365,13 +384,6 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
                   highlightedIndices: filterSuggestions(initialQuery, registeredActions).map(item => registeredActions.indexOf(item)).filter(i => i !== -1),
                   selectedIndex: filterSuggestions(initialQuery, registeredActions).map(item => registeredActions.indexOf(item)).filter(i => i !== -1)[0] ?? -1,
               }));
-
-              // Focus the input after the state update allows it to render
-              setTimeout(() => {
-                inputRef.current?.focus();
-                inputRef.current?.select();
-                // Coords are calculated in the useEffect now
-              }, 0);
             }}
             onMouseDown={(e) => {
                 // Prevent single click from placing cursor or triggering unwanted focus inside the text span
@@ -1507,6 +1519,22 @@ const ActionEditorComponent = ({
 
   return (
     <HintContext.Provider value={hintContextValue}>
+      {/* Add CSS overrides for the inline input when hide-selection is active */}
+      <style>
+        {`
+          .ProseMirror-hideselection .action-node-view input {
+            caret-color: initial !important; /* Or try 'auto' or 'black' */
+          }
+          .ProseMirror-hideselection .action-node-view input::selection {
+            background-color: highlight !important; /* Standard system highlight color */
+            color: highlighttext !important; /* Standard system highlight text color */
+          }
+          .ProseMirror-hideselection .action-node-view input::-moz-selection { /* Firefox */
+            background-color: highlight !important;
+            color: highlighttext !important;
+          }
+        `}
+      </style>
       <div className="relative" ref={editorContainerRef}>
         <EditorProvider
           slotBefore={null}
@@ -1590,4 +1618,4 @@ function calculateSuggestionPosition(coords) {
     top: `${Math.max(0, top)}px`, // Ensure it doesn't go off-screen top
     left: `${coords.x}px`,
   };
-} 
+}
