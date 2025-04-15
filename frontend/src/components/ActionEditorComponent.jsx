@@ -999,16 +999,17 @@ const ActionEditorComponent = ({
        return [nodeJson, { type: 'text', text: ' ' }];
      });
 
-     // Remove trailing space if it exists
-     if (actionNodesContent.length > 0 && actionNodesContent[actionNodesContent.length - 1].type === 'text') {
-       actionNodesContent.pop();
-     }
+    // Remove trailing space if it exists - REVERTED: Keep trailing space for now
+    // if (actionNodesContent.length > 0 && actionNodesContent[actionNodesContent.length - 1].type === 'text') {
+    //   actionNodesContent.pop();
+    // }
 
-     return {
+    return {
       type: 'doc',
       content: [
         {
           type: 'paragraph',
+          // REVERTED: Remove span wrapper
           content: actionNodesContent.length > 0 ? actionNodesContent : undefined,
         },
       ],
@@ -1581,13 +1582,29 @@ const ActionEditorComponent = ({
             content: ''; /* Default empty content */
             pointer-events: none;
             color: #adb5bd; /* Light gray */
+            display: inline-block; /* Try inline-block */
+            margin-left: 0.25rem; /* Keep small space */
           }
           .editor-blurred .ProseMirror p::after {
-            content: ' Type here to add action...'; /* Add space at the beginning */
+            content: 'Type here to add action...'; /* No leading space needed */
           }
           /* Optional: Hide default Tiptap empty node placeholder if it appears */
           .editor-blurred .ProseMirror p.is-editor-empty::before {
             content: none;
+          }
+          /* Target the wrapper span inside the paragraph */
+          .ProseMirror p > span.action-content-wrapper::after {
+            content: ''; /* Default empty content */
+            pointer-events: none;
+            color: #adb5bd; /* Light gray */
+          }
+          /* Apply placeholder content to the wrapper span */
+          .editor-blurred .ProseMirror p > span.action-content-wrapper::after {
+            content: ' Type here to add action...'; /* Add space at the beginning */
+          }
+          /* Ensure the wrapper span behaves inline */
+          .ProseMirror p > span.action-content-wrapper {
+            display: inline;
           }
         `}
       </style>

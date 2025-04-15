@@ -41,6 +41,7 @@ and configuring an associated "qualifier" for every action node.
 
 *   **Placeholder Text:**
     *   When the main Tiptap editor area is *not* focused (no text cursor active) *and* no `ActionNode` is currently being edited inline, a light gray placeholder text ("Type here to add action...") appears visually appended *after* all existing content (including `ActionNode`s).
+    *   It renders on the same line as the last piece of content if space allows.
     *   This placeholder is purely visual (implemented via CSS) and does not affect the actual editor content.
     *   The placeholder disappears as soon as the editor gains focus or an `ActionNode` enters its inline editing state.
 *   **Editing Context & Suggestion Triggering:**
@@ -49,7 +50,9 @@ and configuring an associated "qualifier" for every action node.
     *   A "word" is defined as a sequence of letters/numbers.
     *   The currently detected word (`currentQuery`) is used to filter/highlight suggestions.
 *   **Suggestion Menu Behavior:**
-    *   **Appearance:** Appears automatically when the editor gains focus. Displays a list based on `registeredActions` provided externally. Words matching the `currentQuery` (if any) are visually highlighted (given a yellow background).
+    *   **Appearance:** Appears automatically when the editor gains focus. Displays a list based on `registeredActions` provided externally. 
+        *   **"Add new" Item:** If the current typed text (`currentQuery`) is not empty and is not an exact match for any item in `registeredActions`, a special item is prepended to the list. It displays as "`{currentQuery}` (Add new action)", with the "(Add new action)" part visually distinct (e.g., lighter gray). Selecting this item adds an action with the text from `currentQuery`.
+        *   **Highlighting:** Words matching the `currentQuery` (if any) are visually highlighted (given a yellow background).
     *   **Position:** Appears near the current cursor position. It dynamically adjusts to stay within the viewport (e.g., appears above if the cursor is near the bottom, left if near the right), but never obscures the text the user is editing. It *must* follow the cursor precisely as it moves. (TODO: Implement full dynamic viewport adjustment). During inline editing of an `ActionNode`'s word, the suggestion menu appears positioned directly below the inline input field.
     *   **Disappearance:** Disappears *and editor focus is lost (blurred)* when:
         *   The user selects an item (Enter or Click).
@@ -60,12 +63,17 @@ and configuring an associated "qualifier" for every action node.
 *   **Suggestion Menu Interaction:**
     *   **Keyboard:**
         *   `ArrowDown`/`ArrowUp`: Moves the selection cursor in the list, which is not the same as highlighted items. Selection wraps around all the elements of the menu. (Handled by `WordSuggestionExtension`).
-        *   `Enter`: Selects the currently selected item. **This triggers an update to the `ActionEditorComponent`'s `actionsState`**. The component then re-renders Tiptap, replacing the text with the node. Closes menu and blurs editor. (Signaled by `WordSuggestionExtension`, handled by `ActionEditorComponent`).
+        *   `Enter`: Selects the currently selected item. 
+            *   If the selected item is the special "Add new" item, it triggers the creation of an action using the current query text.
+            *   If the selected item is a regular registered action, **this triggers an update to the `ActionEditorComponent`'s `actionsState`**. The component then re-renders Tiptap, replacing the text with the node.
+            *   Closes menu and blurs editor. (Signaled by `WordSuggestionExtension`, handled by `ActionEditorComponent`).
         *   `Escape`: Closes the menu without selection. Blurs editor. (Signaled by `WordSuggestionExtension`).
         *   Typing keys: since suggestion menu follows the cursor and follows the user
         as they type the action name, the list of highlighted words in the menu reflects the words in the `registeredActions` list that have the word the user is entering in the beginning. Each time user types a key,
-        the selection cursor jumps to the first of these, and the menu scrolls to
-        show that element. Moving up or down after that moves the cursor normally,
+        the selection cursor jumps to the first of these highlights, and the menu scrolls to
+        show that element. 
+        *   If no registered action starts with the current query, but the query is not empty, the selection cursor jumps to the special "Add new" item (if present).
+        *   Moving up or down after that moves the cursor normally,
         so that synchronisation between highlighted elements and selection cursor only
         happens when the user types a symbol, other than arrow key.
         There's no filtering in the suggestion menu, all the available options are always there.
