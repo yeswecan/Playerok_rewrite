@@ -68,7 +68,15 @@ const SuggestionList = ({ items = [], highlightedIndices = [], selectedIndex, on
                         role="option"
                         aria-selected={isSelected}
                     >
-                        {item}
+                        {/* --- Render Logic for Add New vs Regular Item --- */}
+                        {typeof item === 'object' && item.type === 'new' ? (
+                            <>
+                                {item.word}
+                                <span className="text-gray-500 ml-1"> (Add new action)</span>
+                            </>
+                        ) : (
+                            item // Regular string item
+                        )}
                     </div>
                 );
             })}

@@ -305,7 +305,7 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
         const selectedWord = items[selectedIndex];
         // console.log('[InlineInput Enter Key] Selecting suggestion:', selectedWord);
         // Directly update state via context, which will also clear editingNodeId
-        updateActionWord(nodeId, selectedWord);
+        updateActionWord(node.attrs.nodeId, selectedWord);
         // setIsEditing(false); // Let the useEffect handle closing based on context change
       } else {
         // console.log('[InlineInput Enter Key] Committing current input value:', e.target.value);
@@ -1111,22 +1111,34 @@ const ActionEditorComponent = ({
 
   // --- Handle Suggestion Selection ---
   const handleSelect = useCallback((selectedItem) => {
-//    console.log(`[handleSelect] Selecting item: ${selectedItem}`);
+    // console.log(`[handleSelect] Selecting item:`, selectedItem);
     if (!selectedItem) return;
 
     const currentSuggestionState = suggestionStateRef.current;
-    if (currentSuggestionState.editingNodeId) {
-      // If editing inline, commit the edit with the selected word
-      // Find the ActionNodeView's handleCommitEdit function instance? This is tricky.
-      // For now, directly update the state, assuming handleCommitEdit in NodeView will handle the visual part if needed (or sync takes over)
-      // console.log(`[handleSelect] Inline edit mode. Updating word for node ${currentSuggestionState.editingNodeId} to ${selectedItem}`);
-      // updateActionWord(currentSuggestionState.editingNodeId, selectedItem); // Requires updateActionWord to be defined
-      // console.warn('[handleSelect] Inline edit selection handling needs updateActionWord (Step 5)');
-      updateActionWord(currentSuggestionState.editingNodeId, selectedItem); // Use the newly defined function
-       setSuggestionState(prev => ({ ...prev, visible: false, forceVisible: false, editingNodeId: null }));
+    const currentQuery = currentSuggestionState.query || '';
+
+    // --- Check if it's the special "Add new" item --- 
+    if (typeof selectedItem === 'object' && selectedItem.type === 'new') {
+        if (currentQuery) { // Ensure query is not empty before adding
+            // console.log(`[handleSelect] Adding new action from query: ${currentQuery}`);
+            addAction(currentQuery, defaultQualifierRef.current);
+        } else {
+            // console.log('[handleSelect] Ignoring "Add new" selection because query is empty.');
+        }
+    } 
+    // --- Regular item or inline edit selection --- 
+    else if (currentSuggestionState.editingNodeId) {
+      const wordToUse = typeof selectedItem === 'string' ? selectedItem : selectedItem.word; // Handle both cases if needed
+      // console.log(`[handleSelect] Inline edit mode. Updating word for node ${currentSuggestionState.editingNodeId} to ${wordToUse}`);
+      updateActionWord(currentSuggestionState.editingNodeId, wordToUse);
     } else {
-      // If not editing inline, add a new action
-      addAction(selectedItem, defaultQualifierRef.current);
+      // If not editing inline, add a new action (must be a string here)
+      if (typeof selectedItem === 'string') {
+        // console.log(`[handleSelect] Adding existing action: ${selectedItem}`);
+        addAction(selectedItem, defaultQualifierRef.current);
+      } else {
+        // console.warn('[handleSelect] Received unexpected item type for non-inline add:', selectedItem);
+      }
     }
 
     // Focus editor after selection
@@ -1457,26 +1469,40 @@ const ActionEditorComponent = ({
     }
     // --- End Refined Visibility Logic ---
 
-    // --- Calculate highlighted indices based on query ---
+    // --- Add "Add new" item logic --- 
+    let finalItemsToShow = [...registeredActions]; // Start with registered actions
+    let addNewItem = null;
+    const trimmedQuery = query.trim();
+    const isExactMatch = registeredActions.some(action => action === trimmedQuery);
+
+    if (trimmedQuery && !isExactMatch) {
+        addNewItem = { type: 'new', word: trimmedQuery };
+        finalItemsToShow.unshift(addNewItem); // Prepend the "Add new" item
+    }
+    // --- End Add "Add new" item logic ---
+
+    // --- Calculate highlighted indices based on query and finalItemsToShow --- 
     let highlightedIndices = [];
     if (shouldBeVisible) {
       const lowerCaseQuery = String(query || '').toLowerCase();
-      registeredActions.forEach((item, index) => {
-          if (item.toLowerCase().includes(lowerCaseQuery)) {
+      // Adjust index based on whether addNewItem exists
+      finalItemsToShow.forEach((item, index) => {
+          const itemText = (typeof item === 'object' && item.type === 'new') ? item.word : item;
+          if (typeof itemText === 'string' && itemText.toLowerCase().includes(lowerCaseQuery)) {
               highlightedIndices.push(index);
           }
       });
     }
     // console.log('[Suggestion Effect] Calculated highlightedIndices:', highlightedIndices);
 
-    const itemsToShow = registeredActions;
-
     const finalPosition = calculateSuggestionPosition(coords);
 
-    // --- Update State (Removed skip logic) ---
+    // --- Update State ---
     setSuggestionState(prev => {
-        const queryChanged = prev.query !== query;
         const visibilityChanged = prev.visible !== shouldBeVisible;
+        const queryChanged = prev.query !== query;
+        // Compare with finalItemsToShow
+        const itemsChanged = JSON.stringify(prev.items) !== JSON.stringify(finalItemsToShow); 
         const highlightedIndicesChanged = JSON.stringify(prev.highlightedIndices) !== JSON.stringify(highlightedIndices);
         const coordsChanged = JSON.stringify(prev.coords) !== JSON.stringify(coords);
         const editingNodeChanged = prev.editingNodeId !== currentEditingNodeId;
@@ -1484,26 +1510,42 @@ const ActionEditorComponent = ({
         const currentForceVisible = !!currentEditingNodeId && forceVisible;
         const forceVisibleChanged = prev.forceVisible !== currentForceVisible;
 
-        if (!visibilityChanged && !highlightedIndicesChanged && !coordsChanged && !editingNodeChanged && !queryChanged && !finalPositionChanged && !forceVisibleChanged) {
+        // If nothing changed, return previous state
+        if (!visibilityChanged && !itemsChanged && !highlightedIndicesChanged && !coordsChanged && !editingNodeChanged && !queryChanged && !finalPositionChanged && !forceVisibleChanged) {
             // console.log('[Suggestion Effect] No change detected');
             return prev;
         }
 
-        let newSelectedIndex = prev.selectedIndex;
-        if (visibilityChanged || (shouldBeVisible && (queryChanged || highlightedIndicesChanged))) {
-             newSelectedIndex = highlightedIndices.length > 0 ? highlightedIndices[0] : -1;
-             // console.log(`[Suggestion Effect] Visibility/Query/Highlight Changed: Setting selectedIndex to: ${newSelectedIndex}`);
-        } else if (!shouldBeVisible) {
-            newSelectedIndex = -1;
+        // --- Determine newSelectedIndex based on query and matches ---
+        let newSelectedIndex = -1;
+        if (shouldBeVisible) {
+            if (addNewItem) {
+                // "Add new" item exists. Check for real matches starting with query.
+                const firstRealMatchIndex = registeredActions.findIndex(action => 
+                    action.toLowerCase().startsWith(query.toLowerCase())
+                );
+                if (firstRealMatchIndex !== -1) {
+                    newSelectedIndex = firstRealMatchIndex + 1; // +1 because "Add new" is at index 0
+                } else {
+                    newSelectedIndex = 0; // No real match starts with query, select "Add new"
+                }
+            } else {
+                 // "Add new" item doesn't exist (query is empty or exact match)
+                 // Select the first highlighted item if any
+                newSelectedIndex = highlightedIndices.length > 0 ? highlightedIndices[0] : -1;
+            }
+        } else {
+            newSelectedIndex = -1; // Not visible
         }
+        // console.log(`[Suggestion Effect] Setting selectedIndex to: ${newSelectedIndex}`);
 
-        // console.log(`[Suggestion Effect] Updating State: visible=${shouldBeVisible}, query="${query}", itemsCount=${itemsToShow.length}, highlightedCount=${highlightedIndices.length}, selectedIndex=${newSelectedIndex}, editingNodeId=${currentEditingNodeId}, forceVisible=${currentForceVisible}`);
+        // console.log(`[Suggestion Effect] Updating State: visible=${shouldBeVisible}, query="${query}", itemsCount=${finalItemsToShow.length}, highlightedCount=${highlightedIndices.length}, selectedIndex=${newSelectedIndex}, editingNodeId=${currentEditingNodeId}, forceVisible=${currentForceVisible}`);
 
         return {
             ...prev,
             visible: shouldBeVisible,
             query: query,
-            items: itemsToShow,
+            items: finalItemsToShow, // Use the potentially modified list
             highlightedIndices: highlightedIndices,
             coords: coords,
             selectedIndex: newSelectedIndex,
