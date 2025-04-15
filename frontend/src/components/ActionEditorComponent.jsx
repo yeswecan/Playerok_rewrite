@@ -996,20 +996,14 @@ const ActionEditorComponent = ({
         content: [{ type: 'text', text: action.word }],
       };
        // Add a space after each node for separation
-       return [nodeJson, { type: 'text', text: ' ' }];
+       return [nodeJson];
      });
 
-    // Remove trailing space if it exists - REVERTED: Keep trailing space for now
-    // if (actionNodesContent.length > 0 && actionNodesContent[actionNodesContent.length - 1].type === 'text') {
-    //   actionNodesContent.pop();
-    // }
-
-    return {
+     return {
       type: 'doc',
       content: [
         {
           type: 'paragraph',
-          // REVERTED: Remove span wrapper
           content: actionNodesContent.length > 0 ? actionNodesContent : undefined,
         },
       ],
@@ -1558,6 +1552,50 @@ const ActionEditorComponent = ({
 
   }, [editorInstance, registeredActions, updateRequestNonce]); // Removed startInlineEdit dependency
 
+  // --- NEW: Add MouseDown listener to handle padding clicks ---
+  useEffect(() => {
+    const container = editorContainerRef.current;
+    const editor = editorInstanceRef.current;
+
+    const handleMouseDown = (event) => {
+      // Only proceed if the editor instance exists, is focused, and not destroyed
+      if (!editor || editor.isDestroyed || !editor.isFocused) {
+        return;
+      }
+
+      // Check if the direct target is the ProseMirror content area itself
+      if (event.target === editor.view.dom) {
+        // Use setTimeout to allow Tiptap to process the click first
+        setTimeout(() => {
+          // Re-check editor state inside timeout
+          if (editor && !editor.isDestroyed && editor.isFocused) {
+            const currentSuggestionState = suggestionStateRef.current;
+            // Only intervene if menu is visible and we're not inline editing
+            if (currentSuggestionState.visible && !currentSuggestionState.editingNodeId) {
+              console.log('[MouseDown Fix Timeout] Clicked padding, hiding menu and blurring.');
+              setSuggestionState(prev => ({ ...prev, visible: false }));
+              editor.commands.blur();
+            }
+          }
+        }, 0); // Defer execution slightly
+      }
+    };
+
+    if (container && editor) {
+      container.addEventListener('mousedown', handleMouseDown);
+      // console.log('[MouseDown Fix] Listener added.');
+    }
+
+    // Cleanup
+    return () => {
+      if (container) {
+        container.removeEventListener('mousedown', handleMouseDown);
+        // console.log('[MouseDown Fix] Listener removed.');
+      }
+    };
+    // Add dependencies: editorInstanceRef state itself doesn't trigger effect, 
+    // but we need the editor instance value. Add `editorInstance` to deps.
+  }, [editorInstance]); // Re-run when editorInstance becomes available
 
   // --- Render ---
   // ... existing code ...
@@ -1582,29 +1620,21 @@ const ActionEditorComponent = ({
             content: ''; /* Default empty content */
             pointer-events: none;
             color: #adb5bd; /* Light gray */
-            display: inline-block; /* Try inline-block */
-            margin-left: 0.25rem; /* Keep small space */
+            display: inline-block;
+            margin-left: 5px;
           }
           .editor-blurred .ProseMirror p::after {
-            content: 'Type here to add action...'; /* No leading space needed */
+            content: 'Type here to add action...'; /* Add space at the beginning */
           }
           /* Optional: Hide default Tiptap empty node placeholder if it appears */
           .editor-blurred .ProseMirror p.is-editor-empty::before {
             content: none;
           }
-          /* Target the wrapper span inside the paragraph */
-          .ProseMirror p > span.action-content-wrapper::after {
-            content: ''; /* Default empty content */
-            pointer-events: none;
-            color: #adb5bd; /* Light gray */
-          }
-          /* Apply placeholder content to the wrapper span */
-          .editor-blurred .ProseMirror p > span.action-content-wrapper::after {
-            content: ' Type here to add action...'; /* Add space at the beginning */
-          }
-          /* Ensure the wrapper span behaves inline */
-          .ProseMirror p > span.action-content-wrapper {
-            display: inline;
+          /* NEW: Try flex display on the paragraph when blurred */
+          .editor-blurred .ProseMirror p {
+            display: flex;
+            align-items: center; /* Vertically align items */
+            flex-wrap: wrap; /* Allow wrapping if needed */
           }
         `}
       </style>
