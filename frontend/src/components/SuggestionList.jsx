@@ -3,7 +3,7 @@ import React, { useRef, useEffect, useLayoutEffect, useState } from 'react';
 // Assuming HIGHLIGHT_DICTIONARY is accessible or passed if hints are needed here
 // import { HIGHLIGHT_DICTIONARY } from '../path/to/dictionary';
 
-const SuggestionList = ({ items = [], highlightedIndices = [], selectedIndex, onSelect, query }) => {
+const SuggestionList = ({ items = [], highlightedIndices = [], selectedIndex, onSelect, query, showHint, hideHint }) => {
     const listRef = useRef(null);
     const [hasHighlighted, setHasHighlighted] = useState(false);
 
@@ -39,6 +39,7 @@ const SuggestionList = ({ items = [], highlightedIndices = [], selectedIndex, on
             {itemsToDisplay.map((item, index) => {
                 const isSelected = index === selectedIndex;
                 const shouldHighlight = highlightedIndices.includes(index);
+
                 const className = `
                     px-3 py-1 cursor-pointer rounded
                     ${isSelected ? 'bg-blue-100' : 'hover:bg-gray-100'}
@@ -64,9 +65,20 @@ const SuggestionList = ({ items = [], highlightedIndices = [], selectedIndex, on
                         key={index}
                         className={className}
                         style={itemStyle}
-                        onClick={() => onSelect(item)}
+                        onClick={() => {
+                            onSelect(item);
+                            hideHint(); // Hide hint immediately on click
+                        }}
                         role="option"
                         aria-selected={isSelected}
+                        onMouseEnter={(e) => {
+                            const targetElement = e.currentTarget;
+                            if (typeof item === 'object' && item.type !== 'new' && item.hint && targetElement) {
+                                const rect = targetElement.getBoundingClientRect();
+                                showHint(rect, item.hint, targetElement, 'suggestion');
+                            }
+                        }}
+                        onMouseLeave={hideHint}
                     >
                         {/* --- Render Logic for Add New vs Regular Item --- */}
                         {typeof item === 'object' && item.type === 'new' ? (
@@ -74,8 +86,10 @@ const SuggestionList = ({ items = [], highlightedIndices = [], selectedIndex, on
                                 {item.word}
                                 <span className="text-gray-500 ml-1"> (Add new action)</span>
                             </>
+                        ) : typeof item === 'object' ? (
+                            item.word
                         ) : (
-                            item // Regular string item
+                            item
                         )}
                     </div>
                 );

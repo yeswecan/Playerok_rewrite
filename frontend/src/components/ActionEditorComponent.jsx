@@ -22,6 +22,8 @@ export const HintContext = createContext({
     suggestionStateRef: { current: null },
     openQualifierNodeId: null,
     setOpenQualifierNodeId: (nodeId) => {},
+    // --- Additions for hint state ---
+    actionsState: [], // Add placeholder
 });
 
 // --- Custom TipTap Node for Actions ---
@@ -120,7 +122,7 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
   const originalWordRef = useRef(node.textContent);
   const { qualifier, nodeId } = node.attrs || {};
   const hintContext = useContext(HintContext);
-  const { showHint, hideHint, updateActionWord, onActionDeleted, updateActionQualifier, setSuggestionState, registeredActions, suggestionStateRef, editorContainerRef, editingNodeId, openQualifierNodeId, setOpenQualifierNodeId } = hintContext;
+  const { showHint, hideHint, updateActionWord, onActionDeleted, updateActionQualifier, setSuggestionState, registeredActions, suggestionStateRef, editorContainerRef, editingNodeId, openQualifierNodeId, setOpenQualifierNodeId, actionsState } = hintContext;
   const wrapperRef = useRef(null);
 
   useEffect(() => {
@@ -212,9 +214,11 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
   const toggleDropdown = (e) => {
     e.preventDefault();
     e.stopPropagation();
+    const nextIsOpen = !isOpen;
     setIsOpen(!isOpen);
-    if (!isOpen) {
+    if (nextIsOpen) {
         // Opening the dropdown
+        hideHint(); // Hide hint when opening
         setOpenQualifierNodeId(nodeId); // Register this node as having the open dropdown
         setSuggestionState(prev => ({ ...prev, visible: false })); // Hide suggestions
     } else {
@@ -236,9 +240,15 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
   };
 
   const handleMouseEnter = () => {
-    if (wrapperRef.current && node.textContent) {
+    // Find the hint content from the actionsState using nodeId
+    const actionData = actionsState.find(a => a.id === nodeId);
+    const hintContent = actionData?.hint || ''; // Default to empty string if not found
+    // console.log(`[ActionNodeView MouseEnter] Node ID: ${nodeId}, Hint: ${hintContent}`);
+
+    // Only show hint if dropdown is closed and hint content exists
+    if (!isOpen && wrapperRef.current && hintContent) { // Only show if hint exists
       const rect = wrapperRef.current.getBoundingClientRect();
-      showHint(rect, node.textContent);
+      showHint(rect, hintContent); // Pass hint content
     }
   };
 
@@ -447,8 +457,8 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
 
 function filterSuggestions(query, registeredActions) {
   if (!registeredActions) return [];
-  return registeredActions.filter(item =>
-    item.toLowerCase().includes(query.toLowerCase())
+  return registeredActions.filter(action =>
+    action.word.toLowerCase().includes(query.toLowerCase())
   );
 }
 
@@ -824,6 +834,14 @@ const ActionEditorComponent = ({
   });
   const suggestionStateRef = useRef(suggestionState); // Ref for suggestion state
   const [openQualifierNodeId, setOpenQualifierNodeId] = useState(null); // <-- Add state for open qualifier
+  // --- Hint State ---
+  const [hintState, setHintState] = useState({
+    visible: false,
+    content: '',
+    targetRect: null, // Store the bounding rect of the target element
+    targetElement: null, // Store the actual target element for recalculation
+    hintType: 'node', // Add type: 'node' or 'suggestion'
+  });
 
   const onActionWordChangedRef = useRef(onActionWordChanged);
   const onQualifierChangedRef = useRef(onQualifierChanged);
@@ -920,13 +938,21 @@ const ActionEditorComponent = ({
   }, [initialActions]); // Dependency array includes initialActions
 
   // Placeholder hint functions (implement actual logic if needed)
-  const showHint = useCallback((rect, word) => {
-    // console.log('showHint called:', rect, word);
-  }, []);
+  const showHint = useCallback((rect, hintContent, element, type = 'node') => {
+    // console.log('[showHint] called:', rect, hintContent);
+    setHintState({
+      visible: true,
+      content: hintContent,
+      targetRect: rect,
+      targetElement: element, // Store the element
+      hintType: type, // Store the type
+    });
+  }, []); // Empty dependency array
 
   const hideHint = useCallback(() => {
-    // console.log('hideHint called');
-  }, []);
+    // console.log('[hideHint] called');
+    setHintState(prev => ({ ...prev, visible: false, targetElement: null })); // Clear target element too
+  }, []); // Empty dependency array
 
   // --- State Update Functions ---
 
@@ -1106,8 +1132,11 @@ const ActionEditorComponent = ({
 
   // --- Handle Suggestion Selection ---
   const handleSelect = useCallback((selectedItem) => {
-    // console.log(`[handleSelect] Selecting item:`, selectedItem);
-    if (!selectedItem) return;
+    console.log(`[handleSelect] Selecting item:`, selectedItem); // <-- ADD LOG
+    if (!selectedItem) {
+      console.log('[handleSelect] No item selected, returning.'); // <-- ADD LOG
+      return;
+    }
 
     const currentSuggestionState = suggestionStateRef.current;
     const currentQuery = currentSuggestionState.query || '';
@@ -1115,24 +1144,25 @@ const ActionEditorComponent = ({
     // --- Check if it's the special "Add new" item --- 
     if (typeof selectedItem === 'object' && selectedItem.type === 'new') {
         if (currentQuery) { // Ensure query is not empty before adding
-            // console.log(`[handleSelect] Adding new action from query: ${currentQuery}`);
+            console.log(`[handleSelect] Adding NEW action from query: ${currentQuery}`); // <-- ADD LOG
             addAction(currentQuery, defaultQualifierRef.current);
         } else {
-            // console.log('[handleSelect] Ignoring "Add new" selection because query is empty.');
+            console.log('[handleSelect] Ignoring "Add new" selection because query is empty.'); // <-- ADD LOG
         }
     } 
     // --- Regular item or inline edit selection --- 
     else if (currentSuggestionState.editingNodeId) {
-      const wordToUse = typeof selectedItem === 'string' ? selectedItem : selectedItem.word; // Handle both cases if needed
-      // console.log(`[handleSelect] Inline edit mode. Updating word for node ${currentSuggestionState.editingNodeId} to ${wordToUse}`);
+      // Item should be an object here
+      const wordToUse = typeof selectedItem === 'object' ? selectedItem.word : selectedItem;
+      console.log(`[handleSelect] Inline edit mode. Updating word for node ${currentSuggestionState.editingNodeId} to ${wordToUse}`); // <-- ADD LOG
       updateActionWord(currentSuggestionState.editingNodeId, wordToUse);
     } else {
-      // If not editing inline, add a new action (must be a string here)
-      if (typeof selectedItem === 'string') {
-        // console.log(`[handleSelect] Adding existing action: ${selectedItem}`);
-        addAction(selectedItem, defaultQualifierRef.current);
+      // If not editing inline, add a new action (must be an object here)
+      if (typeof selectedItem === 'object' && selectedItem.word) {
+        console.log(`[handleSelect] Adding existing action: ${selectedItem.word}`); // <-- ADD LOG
+        addAction(selectedItem.word, defaultQualifierRef.current);
       } else {
-        // console.warn('[handleSelect] Received unexpected item type for non-inline add:', selectedItem);
+        console.warn('[handleSelect] Received unexpected item type for non-inline add:', selectedItem);
       }
     }
 
@@ -1206,7 +1236,7 @@ const ActionEditorComponent = ({
             ...prev,
             visible: true,
             query: '', // No query on initial focus
-            items: registeredActions,
+            items: registeredActions, // Pass the array of objects
             highlightedIndices: highlightedIndices,
             coords: coords,
             selectedIndex: -1, // No initial selection
@@ -1266,14 +1296,19 @@ const ActionEditorComponent = ({
 
   const handleSelectByIndex = useCallback(() => {
     const { selectedIndex, items, visible } = suggestionStateRef.current;
+    console.log(`[handleSelectByIndex] Triggered. State:`, { selectedIndex, items: items?.length, visible }); // <-- ADD LOG
     if (visible && selectedIndex >= 0 && items && items.length > selectedIndex) {
       const selectedItem = items[selectedIndex];
-      // console.log(`[handleSelectByIndex] Selecting item at index ${selectedIndex}: ${selectedItem}`);
-      handleSelect(selectedItem);
-      return true; // Indicate selection happened
+      console.log(`[handleSelectByIndex] Selecting item at index ${selectedIndex}:`, selectedItem); // <-- ADD LOG
+      const selectionHappened = handleSelect(selectedItem);
+      if (selectionHappened) {
+        hideHint(); // Hide hint after successful keyboard selection
+      }
+      return selectionHappened; // Return actual result
     }
+    console.log('[handleSelectByIndex] No selection made.'); // <-- ADD LOG
     return false; // Indicate no selection happened
-  }, [handleSelect]);
+  }, [handleSelect, hideHint]);
 
 
   // --- Inline Edit State Management ---
@@ -1308,6 +1343,33 @@ const ActionEditorComponent = ({
   }, []);
 
 
+  // --- Effect to handle scroll and update hint position --- 
+  useEffect(() => {
+    const handleScroll = () => {
+      if (hintState.visible && hintState.targetElement) {
+        // console.log('[Scroll Handler] Updating hint position...');
+        setHintState(prev => ({
+          ...prev,
+          targetRect: prev.targetElement.getBoundingClientRect(), // Recalculate rect
+        }));
+      }
+    };
+  
+    if (hintState.visible) {
+      window.addEventListener('scroll', handleScroll, true); // Use capture phase
+      // console.log('[Scroll Effect] Added scroll listener.');
+    } else {
+      window.removeEventListener('scroll', handleScroll, true);
+      // console.log('[Scroll Effect] Removed scroll listener.');
+    }
+  
+    // Cleanup listener on component unmount or when hint becomes invisible
+    return () => {
+      window.removeEventListener('scroll', handleScroll, true);
+      // console.log('[Scroll Effect] Cleanup: Removed scroll listener.');
+    };
+  }, [hintState.visible, hintState.targetElement]); // Depend on visibility and target element
+
   // Provide context value
   const hintContextValue = useMemo(() => ({
     showHint,
@@ -1323,7 +1385,7 @@ const ActionEditorComponent = ({
     onActionDeleted: onActionDeletedRef.current,     // Pass stable ref
     defaultQualifier: defaultQualifierRef.current,   // Pass stable ref
     // --- New additions for state management ---
-    actionsState: actionsStateRef.current, // Provide current state via ref if needed downstream (use cautiously)
+    actionsState: actionsState, // Provide the state directly
     addAction,
     editingNodeId: suggestionState.editingNodeId, // Pass current editing ID
     startInlineEdit,
@@ -1336,7 +1398,7 @@ const ActionEditorComponent = ({
   }), [
     showHint, hideHint, registeredActions, qualifierOptions,
     suggestionStateRef, setSuggestionState,
-    actionsStateRef, addAction, updateActionQualifier, updateActionWord,
+    actionsState, addAction, updateActionQualifier, updateActionWord,
     suggestionState.editingNodeId, startInlineEdit, stopInlineEdit,
     editorContainerRef,
     onQualifierChangedRef, onActionDeletedRef, defaultQualifierRef,
@@ -1350,7 +1412,7 @@ const ActionEditorComponent = ({
     return WordSuggestionExtension.configure({
       getSuggestionState: () => suggestionStateRef.current,
       requestCoordUpdate: () => { setUpdateRequestNonce(n => n + 1); },
-      registeredActions,
+      registeredActions, // Pass the array of objects
       defaultQualifier: defaultQualifierRef.current,
       editorContainerRef,
       handleImplicitCreate: (word, reason) => checkAndTriggerImplicitCreation(reason), // Correctly map args
@@ -1468,7 +1530,7 @@ const ActionEditorComponent = ({
     let finalItemsToShow = [...registeredActions]; // Start with registered actions
     let addNewItem = null;
     const trimmedQuery = query.trim();
-    const isExactMatch = registeredActions.some(action => action === trimmedQuery);
+    const isExactMatch = registeredActions.some(action => action.word === trimmedQuery);
 
     if (trimmedQuery && !isExactMatch) {
         addNewItem = { type: 'new', word: trimmedQuery };
@@ -1482,8 +1544,9 @@ const ActionEditorComponent = ({
       const lowerCaseQuery = String(query || '').toLowerCase();
       // Adjust index based on whether addNewItem exists
       finalItemsToShow.forEach((item, index) => {
-          const itemText = (typeof item === 'object' && item.type === 'new') ? item.word : item;
-          if (typeof itemText === 'string' && itemText.toLowerCase().includes(lowerCaseQuery)) {
+          const itemWord = (typeof item === 'object' && item.type !== 'new') ? item.word : 
+                        (typeof item === 'object' && item.type === 'new') ? item.word : item;
+          if (typeof itemWord === 'string' && itemWord.toLowerCase().includes(lowerCaseQuery)) {
               highlightedIndices.push(index);
           }
       });
@@ -1511,13 +1574,18 @@ const ActionEditorComponent = ({
             return prev;
         }
 
+        // If suggestion menu is becoming hidden, also hide the suggestion hint
+        if (prev.visible && !shouldBeVisible && hintState.hintType === 'suggestion') {
+          hideHint();
+        }
+
         // --- Determine newSelectedIndex based on query and matches ---
         let newSelectedIndex = -1;
         if (shouldBeVisible) {
             if (addNewItem) {
                 // "Add new" item exists. Check for real matches starting with query.
                 const firstRealMatchIndex = registeredActions.findIndex(action => 
-                    action.toLowerCase().startsWith(query.toLowerCase())
+                    action.word.toLowerCase().startsWith(query.toLowerCase())
                 );
                 if (firstRealMatchIndex !== -1) {
                     newSelectedIndex = firstRealMatchIndex + 1; // +1 because "Add new" is at index 0
@@ -1564,7 +1632,7 @@ const ActionEditorComponent = ({
       }
 
       // Check if the direct target is the ProseMirror content area itself
-      if (event.target === editor.view.dom) {
+      if (event.target === editor.view.dom && editor.isFocused) { // Add focus check
         // Use setTimeout to allow Tiptap to process the click first
         setTimeout(() => {
           // Re-check editor state inside timeout
@@ -1693,11 +1761,18 @@ const ActionEditorComponent = ({
                 highlightedIndices={suggestionState.highlightedIndices || []}
                 onSelect={handleSelect}
                 coords={suggestionState.coords}
+                showHint={showHint}
+                hideHint={hideHint}
               />
             </div>,
             document.body
           )
         }
+        {/* --- Hint Tooltip Portal --- */}
+        {ReactDOM.createPortal(
+          <HintTooltip hintState={hintState} />,
+          document.body
+        )}
       </div>
     </HintContext.Provider>
   );
@@ -1730,3 +1805,105 @@ function calculateSuggestionPosition(coords) {
     left: `${coords.x}px`,
   };
 }
+
+// Helper function for positioning the hint
+function calculateHintPosition(targetRect, hintRect, hintType = 'node') {
+  if (!targetRect || !hintRect) {
+    return { top: -9999, left: -9999 }; // Hide if no rects
+  }
+
+  const { innerWidth, innerHeight, scrollX, scrollY } = window;
+  const hintMargin = 5; // Space between target and hint
+
+  let top, left;
+
+  if (hintType === 'suggestion') {
+    // Suggestion hint positioning: Right or Left, vertically centered
+
+    // Default position: To the right, vertically centered
+    left = targetRect.right + scrollX + hintMargin; 
+    top = targetRect.top + scrollY + (targetRect.height / 2) - (hintRect.height / 2);
+
+    // Check if right edge is off-screen
+    if (left + hintRect.width > innerWidth + scrollX) {
+      // Position to the left instead
+      left = targetRect.left + scrollX - hintRect.width - hintMargin;
+    }
+
+    // Adjust left to stay in viewport
+    if (left - scrollX < 0) {
+      left = scrollX + hintMargin; // Add margin from left edge
+    } else if (left + hintRect.width - scrollX > innerWidth) {
+      // This case should ideally be handled by the left positioning logic above,
+      // but as a fallback, push it against the right edge.
+      left = innerWidth + scrollX - hintRect.width - hintMargin;
+    }
+
+    // Adjust top to stay in viewport
+    if (top - scrollY < 0) {
+      top = scrollY + hintMargin; // Add margin from top edge
+    } else if (top + hintRect.height - scrollY > innerHeight) {
+      top = innerHeight + scrollY - hintRect.height - hintMargin; // Add margin from bottom edge
+    }
+
+  } else {
+    // Default ('node') position: Above the target, centered horizontally
+    top = targetRect.top + scrollY - hintRect.height - hintMargin;
+    left = targetRect.left + scrollX + (targetRect.width / 2) - (hintRect.width / 2);
+
+    // Check if positioning above goes off-screen
+    if (top - scrollY < 0) {
+      // Position below instead
+      top = targetRect.bottom + scrollY + 2; // Use smaller margin when below
+    }
+
+    // Adjust left position to stay within viewport horizontally
+    if (left - scrollX < 0) {
+      left = scrollX; // Align with left edge
+    } else if (left + hintRect.width - scrollX > innerWidth) {
+      left = innerWidth + scrollX - hintRect.width; // Align with right edge
+    }
+
+    // Adjust top position if positioning below goes off-screen (less likely but possible)
+    if (top + hintRect.height - scrollY > innerHeight) {
+      // Try positioning above again, potentially clipped if target is very tall
+      top = targetRect.top + scrollY - hintRect.height - hintMargin;
+    }
+  }
+
+  return { top, left };
+}
+
+// --- Hint Tooltip Component ---
+const HintTooltip = ({ hintState }) => {
+    const { visible, content, targetRect } = hintState;
+    const hintRef = useRef(null);
+    const [position, setPosition] = useState({ top: -9999, left: -9999 });
+
+    // Calculate position whenever state changes
+    useEffect(() => {
+        if (visible && targetRect && hintRef.current) {
+            const hintRect = hintRef.current.getBoundingClientRect();
+            setPosition(calculateHintPosition(targetRect, hintRect, hintState.hintType)); // Pass hint type
+        } else {
+            setPosition({ top: -9999, left: -9999 }); // Hide
+        }
+    }, [visible, targetRect, content, hintState.hintType]); // Add hintType dependency
+
+    if (!visible) return null;
+
+    return (
+        <div
+            ref={hintRef}
+            className="absolute px-2 py-1 bg-gray-800 bg-opacity-80 text-white text-xs rounded shadow-md z-[1001] pointer-events-none" // Changed fixed to absolute
+            style={{
+                top: `${position.top}px`,
+                left: `${position.left}px`,
+                // Use translate for potential subpixel rendering improvements?
+                // transform: `translate(${position.left}px, ${position.top}px)`,
+            }}
+        >
+            {content}
+        </div>
+    );
+};

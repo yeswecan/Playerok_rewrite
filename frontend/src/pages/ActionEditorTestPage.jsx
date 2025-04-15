@@ -4,90 +4,75 @@ import ActionEditorComponent from '../components/ActionEditorComponent';
 // Example dictionary - in real app this would come from your backend/config
 const HIGHLIGHT_DICTIONARY = {
   'react': { 
-    description: 'A JavaScript library for building user interfaces',
     hint: 'React.js - Build amazing UIs'
   },
   'redux': {
-    description: 'A predictable state container for JavaScript apps',
     hint: 'Redux - State management for React'
   },
   'router': {
-    description: 'A routing library for React applications',
     hint: 'React Router - Navigation made easy'
   },
   'quill': { 
-    description: 'A modern WYSIWYG editor built for compatibility and extensibility',
     hint: 'Quill.js - Rich text editing'
   },
   'query': {
-    description: 'A data-fetching and state management library',
     hint: 'React Query - Powerful data synchronization'
   },
   'editor': { 
-    description: 'A program for editing and manipulating text',
     hint: 'Text Editor - Create and modify content'
   },
   'element': {
-    description: 'A basic unit of UI in React applications',
     hint: 'React Element - Building blocks of UI'
   },
   'highlight': { 
-    description: 'To emphasize or make prominent',
     hint: 'Highlight - Draw attention to text'
   },
   'hook': {
-    description: 'A function that lets you use state and other React features',
     hint: 'React Hook - Function-based state management'
   },
   'component': {
-    description: 'A reusable piece of UI in React',
     hint: 'React Component - Building blocks of applications'
   },
   'state': {
-    description: 'Data that can change over time in React',
     hint: 'React State - Dynamic data management'
   },
   'props': {
-    description: 'Properties passed to React components',
     hint: 'React Props - Component configuration'
   },
   'effect': {
-    description: 'Side effects in React components',
     hint: 'React Effect - Handle side effects'
   },
   'context': {
-    description: 'Global state management in React',
     hint: 'React Context - Share data between components'
   },
   'reducer': {
-    description: 'A function that determines state changes',
     hint: 'Redux Reducer - State update logic'
   },
   'action': {
-    description: 'A description of state changes in Redux',
     hint: 'Redux Action - Trigger state updates'
   },
   'middleware': {
-    description: 'Functions that intercept Redux actions',
     hint: 'Redux Middleware - Custom action handling'
   },
   'selector': {
-    description: 'Functions to extract data from Redux state',
     hint: 'Redux Selector - Access state data'
   },
   'dispatch': {
-    description: 'Function to send actions to Redux store',
     hint: 'Redux Dispatch - Trigger state changes'
   },
   'example': {
-      description: 'A thing characteristic of its kind or illustrating a general rule',
-      hint: 'Example - Illustrative item'
+    hint: 'Example - Illustrative item'
   },
   'действие': {
-      description: 'Process of doing something',
-      hint: 'Действие - Action in Russian'
+    hint: 'Действие - Action in Russian'
   }
 };
+
+// Convert dictionary to the desired array format
+const initialRegisteredActions = Object.entries(HIGHLIGHT_DICTIONARY).map(([word, data]) => ({
+  word: word,
+  hint: data.hint
+}));
 
 // Re-define qualifier options 
 const qualifierOptions = [
@@ -97,12 +82,13 @@ const qualifierOptions = [
 ];
 
 const ActionEditorTestPage = () => {
-  const [registeredActions, setRegisteredActions] = useState(Object.keys(HIGHLIGHT_DICTIONARY));
+  // Use the formatted array for initial state
+  const [registeredActions, setRegisteredActions] = useState(initialRegisteredActions);
 
   // --- Step 8: Define meaningful initial state --- 
   const [testActions, setTestActions] = useState([
-    { id: 'init1', word: 'startup', qualifier: 'outgoing' },
-    { id: 'init2', word: 'another', qualifier: 'scheduled' }
+    { id: 'init1', word: 'startup', qualifier: 'outgoing', hint: `Hint: ${Math.random().toFixed(3)}` },
+    { id: 'init2', word: 'another', qualifier: 'scheduled', hint: `Hint: ${Math.random().toFixed(3)}` }
   ]);
 
   // --- Step 8: Function to add an action externally ---
@@ -110,7 +96,8 @@ const ActionEditorTestPage = () => {
     const newAction = {
       id: `external_${Date.now()}`,
       word: 'externalAction',
-      qualifier: 'incoming'
+      qualifier: 'incoming',
+      hint: `Hint: ${Math.random().toFixed(3)}`
     };
     setTestActions(prev => [...prev, newAction]);
     console.log('[ActionEditorTestPage] Added external action. New state:', [...testActions, newAction]);
@@ -131,15 +118,16 @@ const ActionEditorTestPage = () => {
   const handleActionCreated = (id, word, qualifier) => {
     console.log(`[ActionEditorTestPage] Action created: ${word} (${qualifier}) - ID: ${id}`);
     // Update local state ONLY if the action isn't already there (handles sync)
+    const newHint = `Hint: ${Math.random().toFixed(3)}`;
     setTestActions(prev => {
         if (prev.some(a => a.id === id)) {
             return prev; // Already exists, likely from initial state or external add
         }
-        return [...prev, { id, word, qualifier }];
+        return [...prev, { id, word, qualifier, hint: newHint }];
     });
     // Update registered actions if the word is new
-    if (!registeredActions.includes(word)) {
-      setRegisteredActions(prev => [...prev, word]);
+    if (!registeredActions.some(action => action.word === word)) {
+      setRegisteredActions(prev => [...prev, { word: word, hint: `Hint for new: ${word}` }]);
     }
   };
 
@@ -192,7 +180,7 @@ const ActionEditorTestPage = () => {
 
       <div className="border rounded-lg shadow-sm">
         <ActionEditorComponent
-          registeredActions={registeredActions} // Pass the dynamic list
+          registeredActions={registeredActions} // Pass the dynamic list of objects
           qualifierOptions={qualifierOptions}
           defaultQualifier="incoming"
           onActionCreated={handleActionCreated}
