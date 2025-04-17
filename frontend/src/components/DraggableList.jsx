@@ -4,8 +4,9 @@ import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { Checkbox } from './ui/checkbox';
 import { cn } from '../utils';
 import { GripVertical } from 'lucide-react';
+import ActionEditorComponent from './ActionEditorComponent';
 
-const DraggableList = ({ items, onItemMove, onItemLoopToggle, onItemClick }) => {
+const DraggableList = ({ items, onItemMove, onItemLoopToggle, onItemClick, registeredActions, qualifierOptions }) => {
   // Track if we're currently in a drag operation
   const isDragging = useRef(false);
   // Track if we're in a checkbox-triggered animation
@@ -322,15 +323,25 @@ const DraggableList = ({ items, onItemMove, onItemLoopToggle, onItemClick }) => 
                             onCheckedChange={() => handleCheckboxChange(item.id)}
                             disabled={isAnimating.current}
                           />
-                          <label 
-                            htmlFor={`check-${item.id}`} 
-                            className="flex-1 cursor-pointer text-gray-700 flex items-center"
-                            onClick={() => onItemClick(item.originalData)}
+                          <div 
+                            className="flex-1 flex flex-col cursor-pointer"
+                            onClick={() => onItemClick(item)}
                           >
-                            <span className="text-gray-600 w-8 mr-2">{item.index}</span>
-                            {item.isPlaying && <span className="mr-2">▶️</span>}
-                            {item.filename}
-                          </label>
+                            <div className="text-gray-700 flex items-center mb-1">
+                              <span className="text-gray-600 w-8 mr-2">{item.index}</span>
+                              {item.isPlaying && <span className="mr-2">▶️</span>}
+                              {item.filename}
+                            </div>
+                            <div className="ml-10 pl-1">
+                              <ActionEditorComponent
+                                key={`${item.id}-editor`}
+                                initialActions={item.actions || []}
+                                registeredActions={registeredActions}
+                                qualifierOptions={qualifierOptions}
+                                readOnly={true}
+                              />
+                            </div>
+                          </div>
                         </li>
                       )}
                     </Draggable>
@@ -386,15 +397,25 @@ const DraggableList = ({ items, onItemMove, onItemLoopToggle, onItemClick }) => 
                             onCheckedChange={() => handleCheckboxChange(item.id)}
                             disabled={isAnimating.current}
                           />
-                          <label 
-                            htmlFor={`check-${item.id}`} 
-                            className="flex-1 cursor-pointer text-gray-700 flex items-center"
-                            onClick={() => onItemClick(item.originalData)}
+                          <div 
+                            className="flex-1 flex flex-col cursor-pointer"
+                            onClick={() => onItemClick(item)}
                           >
-                            <span className="text-gray-600 w-8 mr-2">{item.index}</span>
-                            {item.isPlaying && <span className="mr-2">▶️</span>}
-                            {item.filename}
-                          </label>
+                            <div className="text-gray-700 flex items-center mb-1">
+                              <span className="text-gray-600 w-8 mr-2">{item.index}</span>
+                              {item.isPlaying && <span className="mr-2">▶️</span>}
+                              {item.filename}
+                            </div>
+                            <div className="ml-10 pl-1">
+                              <ActionEditorComponent
+                                key={`${item.id}-editor`}
+                                initialActions={item.actions || []}
+                                registeredActions={registeredActions}
+                                qualifierOptions={qualifierOptions}
+                                readOnly={true}
+                              />
+                            </div>
+                          </div>
                         </li>
                       )}
                     </Draggable>
@@ -418,11 +439,14 @@ DraggableList.propTypes = {
     isPartOfLoop: PropTypes.bool.isRequired,
     isPlaying: PropTypes.bool.isRequired,
     originalIndex: PropTypes.number.isRequired,
-    originalData: PropTypes.object.isRequired
+    originalData: PropTypes.object.isRequired,
+    actions: PropTypes.array,
   })).isRequired,
   onItemMove: PropTypes.func.isRequired,
   onItemLoopToggle: PropTypes.func.isRequired,
-  onItemClick: PropTypes.func.isRequired
+  onItemClick: PropTypes.func.isRequired,
+  registeredActions: PropTypes.array.isRequired,
+  qualifierOptions: PropTypes.array.isRequired,
 };
 
 export default DraggableList; 

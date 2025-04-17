@@ -8,6 +8,7 @@ import { ChevronDown } from 'lucide-react';
 import SuggestionList from './SuggestionList.jsx';
 import { TextSelection, NodeSelection, Plugin, PluginKey } from 'prosemirror-state';
 import { debounce } from 'lodash-es';
+import { cn } from '../utils';
 
 // --- Hint Context ---
 export const HintContext = createContext({
@@ -564,7 +565,30 @@ const WordSuggestionExtension = Extension.create({
                                 // Iterate nodes within this parent level, before the cursor's relative position
                                 for (let j = resolvedPos.index(i) -1 ; j >=0; j--) {
                                     let childNode = currentParent.child(j);
-                                    let childNodePos = resolvedPos.posAtIndex(j, i);
+                                    let childNodePos = resolvedPos.posAtIndex(j, i); // <-- The error might be here
+                                    // -- BEGIN RangeError Fix --
+                                    // Check if index 'j' is valid for the current parent before calling posAtIndex
+                                    if (j < 0 || j >= currentParent.childCount) {
+                                        console.warn(`[WordSuggestionExtension apply] Invalid index ${j} for parent node with ${currentParent.childCount} children. Skipping posAtIndex calculation.`);
+                                        continue; // Skip this iteration if index is invalid
+                                    }
+                                    // Check if parent node is valid and has the method
+                                    if (!resolvedPos || typeof resolvedPos.posAtIndex !== 'function') {
+                                        console.warn(`[WordSuggestionExtension apply] resolvedPos or posAtIndex method is invalid. Skipping calculation.`);
+                                        break; // Exit loop if posAtIndex is not available
+                                    }
+                                    // Calculate position safely
+                                    try {
+                                      childNodePos = resolvedPos.posAtIndex(j, i);
+                                    } catch (e) {
+                                        if (e instanceof RangeError) {
+                                            console.warn(`[WordSuggestionExtension apply] Caught RangeError calculating posAtIndex(${j}, ${i}). Parent node type: ${currentParent.type.name}, Child count: ${currentParent.childCount}. Skipping boundary check for this node.`, e);
+                                            continue; // Skip to the next iteration if RangeError occurs
+                                        } else {
+                                            throw e; // Re-throw unexpected errors
+                                        }
+                                    }
+                                    // -- END RangeError Fix --
 
                                     if (childNodePos < currentPos) {
                                         if (childNode.type.name === 'actionNode') {
@@ -812,6 +836,7 @@ const ActionEditorComponent = ({
   onActionWordChanged,
   initialContent = '',
   initialActions = [],
+  readOnly = false, // Add readOnly prop with default false
 }) => {
   const [editorInstance, setEditorInstance] = useState(null);
   const [actionsState, setActionsState] = useState(() => initialActions || []);
@@ -1395,6 +1420,7 @@ const ActionEditorComponent = ({
     // --- Additions for qualifier control ---
     openQualifierNodeId,
     setOpenQualifierNodeId,
+    readOnly, // Pass readOnly through context
   }), [
     showHint, hideHint, registeredActions, qualifierOptions,
     suggestionStateRef, setSuggestionState,
@@ -1404,7 +1430,8 @@ const ActionEditorComponent = ({
     onQualifierChangedRef, onActionDeletedRef, defaultQualifierRef,
     checkAndTriggerImplicitCreation,
     // --- Additions for qualifier control ---
-    openQualifierNodeId, setOpenQualifierNodeId
+    openQualifierNodeId, setOpenQualifierNodeId,
+    readOnly // Add readOnly to dependency array
   ]);
 
   // --- Configure Extensions ---
@@ -1704,28 +1731,61 @@ const ActionEditorComponent = ({
             align-items: center; /* Vertically align items */
             flex-wrap: wrap; /* Allow wrapping if needed */
           }
+          /* NEW: Style adjustments for read-only mode */
+          .editor-readonly .action-node-view {
+            cursor: default;
+            background-color: #f3f4f6; /* Lighter gray */
+            border-color: #d1d5db;
+         }
+         .editor-readonly .action-node-view:hover {
+             background-color: #f3f4f6; /* No hover effect */
+         }
+         .editor-readonly .action-node-view button {
+             pointer-events: none; /* Disable button clicks */
+             opacity: 0.7;
+         }
+         .editor-readonly .action-node-view .action-word-content {
+             cursor: default;
+         }
+         .editor-readonly .ProseMirror {
+             min-height: auto; /* Adjust min-height for inline display */
+             padding: 2px 4px; /* Smaller padding */
+         }
+         .suggestion-list-portal {
+            overflow: visible !important;
+            max-height: none !important;
+          }
+          .suggestion-list-portal .bg-white {
+            overflow: visible !important;
+            max-height: none !important;
+          }
         `}
       </style>
-      <div className={`relative ${!isEditorFocused && !suggestionState.editingNodeId ? 'editor-blurred' : ''}`} ref={editorContainerRef}>
+      <div className={`relative ${!isEditorFocused && !suggestionState.editingNodeId ? 'editor-blurred' : ''} ${readOnly ? 'editor-readonly' : ''}`} ref={editorContainerRef}>
         <EditorProvider
           slotBefore={null}
           slotAfter={null}
           extensions={extensions}
-          content={`<p></p>`}
+          content={initialContent || generateTiptapContent(initialActions)} // Use initialActions for initial content
+          editable={!readOnly} // Set editable based on prop
           onFocus={() => {
-              console.log('Editor Focused');
-              setIsEditorFocused(true);
+              // console.log('Editor Focused');
+              if (!readOnly) setIsEditorFocused(true);
           }}
           onBlur={() => {
-              console.log('Editor Blurred');
-              setIsEditorFocused(false);
+              // console.log('Editor Blurred');
+              if (!readOnly) setIsEditorFocused(false);
           }}
           editorProps={{
             attributes: {
-              class: 'prose max-w-full focus:outline-none min-h-[100px] px-4 py-2',
+              class: cn(
+                'prose max-w-full focus:outline-none',
+                readOnly ? 'min-h-0 px-1 py-0.5 text-xs' : 'min-h-[100px] px-4 py-2' // Conditional classes
+               ),
             },
             handleDOMEvents: {
               blur: (view, event) => {
+                if (readOnly) return true; // Prevent default blur handling in read-only
                 const { state } = view;
                 const { selection } = state;
                 if (selection instanceof NodeSelection) {
@@ -1745,12 +1805,13 @@ const ActionEditorComponent = ({
         {suggestionState.visible && suggestionState.coords &&
           ReactDOM.createPortal(
             <div
-              className="suggestion-list-portal fixed z-50"
+              className="suggestion-list-portal fixed"
               style={{
-                 top: suggestionState.coords?.y || 0, // Revert to using coords directly
-                 left: suggestionState.coords?.x || 0, // Revert to using coords directly
-                 opacity: suggestionState.visible ? 1 : 0, // Control visibility via opacity
-                 pointerEvents: suggestionState.visible ? 'auto' : 'none' // Control interaction
+                 zIndex: 1002, // ensure menu is above modal
+                 top: suggestionState.coords?.y || 0,
+                 left: suggestionState.coords?.x || 0,
+                 opacity: suggestionState.visible ? 1 : 0,
+                 pointerEvents: suggestionState.visible ? 'auto' : 'none'
               }}
               onMouseDown={(e) => e.preventDefault()}
               ref={suggestionListRef} // Add a ref to the list container
