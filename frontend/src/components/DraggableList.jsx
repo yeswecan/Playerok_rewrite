@@ -6,7 +6,7 @@ import { cn } from '../utils';
 import { GripVertical } from 'lucide-react';
 import ActionEditorComponent from './ActionEditorComponent';
 
-const DraggableList = ({ items, onItemMove, onItemLoopToggle, onItemClick, registeredActions, qualifierOptions }) => {
+const DraggableList = ({ items, onItemMove, onItemLoopToggle, onItemClick, onItemActionsUpdate, registeredActions, qualifierOptions }) => {
   // Track if we're currently in a drag operation
   const isDragging = useRef(false);
   // Track if we're in a checkbox-triggered animation
@@ -324,21 +324,41 @@ const DraggableList = ({ items, onItemMove, onItemLoopToggle, onItemClick, regis
                             disabled={isAnimating.current}
                           />
                           <div 
-                            className="flex-1 flex flex-col cursor-pointer"
-                            onClick={() => onItemClick(item)}
+                            className="flex-1 flex flex-col"
                           >
-                            <div className="text-gray-700 flex items-center mb-1">
+                            <div className="text-gray-700 flex items-center mb-1 cursor-pointer" onClick={() => onItemClick(item)}>
                               <span className="text-gray-600 w-8 mr-2">{item.index}</span>
                               {item.isPlaying && <span className="mr-2">▶️</span>}
                               {item.filename}
                             </div>
-                            <div className="ml-10 pl-1">
+                            <div 
+                              className="ml-10 pl-1 border border-gray-200 rounded-md"
+                              onMouseDown={(e) => e.stopPropagation()}
+                            >
                               <ActionEditorComponent
                                 key={`${item.id}-editor`}
                                 initialActions={item.actions || []}
                                 registeredActions={registeredActions}
                                 qualifierOptions={qualifierOptions}
-                                readOnly={true}
+                                defaultQualifier="outgoing"
+                                onActionCreated={(id, word, qualifier) => {
+                                  const current = item.actions || [];
+                                  const newActions = [...current, { id, word, qualifier }];
+                                  onItemActionsUpdate(item.originalIndex, { actions: newActions });
+                                }}
+                                onActionDeleted={(nodeId) => {
+                                  const newActions = (item.actions || []).filter(a => a.id !== nodeId);
+                                  onItemActionsUpdate(item.originalIndex, { actions: newActions });
+                                }}
+                                onQualifierChanged={(nodeId, newQualifier) => {
+                                  const newActions = (item.actions || []).map(a => a.id === nodeId ? { ...a, qualifier: newQualifier } : a);
+                                  onItemActionsUpdate(item.originalIndex, { actions: newActions });
+                                }}
+                                onActionWordChanged={(nodeId, newWord) => {
+                                  const newActions = (item.actions || []).map(a => a.id === nodeId ? { ...a, word: newWord } : a);
+                                  onItemActionsUpdate(item.originalIndex, { actions: newActions });
+                                }}
+                                readOnly={false}
                               />
                             </div>
                           </div>
@@ -398,21 +418,41 @@ const DraggableList = ({ items, onItemMove, onItemLoopToggle, onItemClick, regis
                             disabled={isAnimating.current}
                           />
                           <div 
-                            className="flex-1 flex flex-col cursor-pointer"
-                            onClick={() => onItemClick(item)}
+                            className="flex-1 flex flex-col"
                           >
-                            <div className="text-gray-700 flex items-center mb-1">
+                            <div className="text-gray-700 flex items-center mb-1 cursor-pointer" onClick={() => onItemClick(item)}>
                               <span className="text-gray-600 w-8 mr-2">{item.index}</span>
                               {item.isPlaying && <span className="mr-2">▶️</span>}
                               {item.filename}
                             </div>
-                            <div className="ml-10 pl-1">
+                            <div 
+                              className="ml-10 pl-1 border border-gray-200 rounded-md"
+                              onMouseDown={(e) => e.stopPropagation()}
+                            >
                               <ActionEditorComponent
                                 key={`${item.id}-editor`}
                                 initialActions={item.actions || []}
                                 registeredActions={registeredActions}
                                 qualifierOptions={qualifierOptions}
-                                readOnly={true}
+                                defaultQualifier="outgoing"
+                                onActionCreated={(id, word, qualifier) => {
+                                  const current = item.actions || [];
+                                  const newActions = [...current, { id, word, qualifier }];
+                                  onItemActionsUpdate(item.originalIndex, { actions: newActions });
+                                }}
+                                onActionDeleted={(nodeId) => {
+                                  const newActions = (item.actions || []).filter(a => a.id !== nodeId);
+                                  onItemActionsUpdate(item.originalIndex, { actions: newActions });
+                                }}
+                                onQualifierChanged={(nodeId, newQualifier) => {
+                                  const newActions = (item.actions || []).map(a => a.id === nodeId ? { ...a, qualifier: newQualifier } : a);
+                                  onItemActionsUpdate(item.originalIndex, { actions: newActions });
+                                }}
+                                onActionWordChanged={(nodeId, newWord) => {
+                                  const newActions = (item.actions || []).map(a => a.id === nodeId ? { ...a, word: newWord } : a);
+                                  onItemActionsUpdate(item.originalIndex, { actions: newActions });
+                                }}
+                                readOnly={false}
                               />
                             </div>
                           </div>
@@ -445,6 +485,7 @@ DraggableList.propTypes = {
   onItemMove: PropTypes.func.isRequired,
   onItemLoopToggle: PropTypes.func.isRequired,
   onItemClick: PropTypes.func.isRequired,
+  onItemActionsUpdate: PropTypes.func.isRequired,
   registeredActions: PropTypes.array.isRequired,
   qualifierOptions: PropTypes.array.isRequired,
 };

@@ -45,7 +45,7 @@ app.use((req, res, next) => {
 // CORS configuration
 app.use(cors({
     origin: ['http://localhost:5173', 'http://192.168.1.5:5173'],
-    methods: ['GET', 'POST', 'DELETE', 'OPTIONS', 'PATCH'],
+    methods: ['GET', 'POST', 'DELETE', 'OPTIONS', 'PATCH', 'PUT'],
     allowedHeaders: ['Content-Type'],
     credentials: true
 }));
@@ -287,6 +287,47 @@ app.get('/api/getCurrentTrack', async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
+});
+
+// Update item actions
+app.put('/api/updateActions/:name/:index', async (req, res) => {
+    try {
+        const { name, index } = req.params;
+        const { actions } = req.body;
+
+        // Validate actions input
+        if (!Array.isArray(actions)) {
+            return res.status(400).json({ error: 'Invalid actions format. Expected an array.' });
+        }
+        // Optional: Add more validation for the content of the actions array if needed
+
+        const playlistPath = path.join(PLAYLISTS_DIR, `${name}.json`);
+        const playlist = await Playlist.load(playlistPath);
+
+        const itemIndex = parseInt(index);
+        if (isNaN(itemIndex)) {
+            return res.status(400).json({ error: 'Invalid item index.' });
+        }
+
+        // Use the existing updateItem method (assuming it can handle the 'actions' key)
+        // Ensure Playlist.js's updateItem method correctly handles/validates the 'actions' field.
+        const updatedItem = playlist.updateItem(itemIndex, { actions: actions });
+
+        if (!updatedItem) {
+            return res.status(404).json({ error: 'Item not found at the specified index.' });
+        }
+
+        await playlist.save(playlistPath);
+        console.log(`[updateActions] Successfully updated actions for item ${itemIndex} in playlist ${name}`);
+        res.json(updatedItem); // Send back the updated item
+
+    } catch (error) {
+        if (error.code === 'ENOENT') { // Handle playlist not found specifically
+            return res.status(404).json({ error: 'Playlist not found' });
+        }
+        console.error(`[updateActions] Error updating actions for playlist ${req.params.name}, index ${req.params.index}:`, error);
+        res.status(500).json({ error: 'Failed to update actions: ' + error.message });
+    }
 });
 
 // Error handler for multer errors

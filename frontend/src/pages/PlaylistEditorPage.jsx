@@ -5,6 +5,7 @@ import DraggableList from '../components/DraggableList';
 import { API_URL } from '../config';
 // --- Action Editor Imports ---
 import ActionEditorComponent from '../components/ActionEditorComponent'; 
+import { ChevronLeft } from 'lucide-react';
 
 // --- Mock Data for Action Editor ---
 const MOCK_HIGHLIGHT_DICTIONARY = {
@@ -156,6 +157,13 @@ const PlaylistEditorPage = () => {
         case 'actions': 
             // Now we handle the actual update
             console.log(`[handleUpdateItem] Updating actions for index ${index}:`, updates.actions);
+            // Optimistically update local playlist state so inline edits reflect immediately
+            setPlaylist(prev => ({
+              ...prev,
+              items: prev.items.map((item, idx) =>
+                idx === index ? { ...item, actions: updates.actions } : item
+              ),
+            }));
             apiEndpoint = 'updateActions'; // Hypothetical endpoint
             body = { actions: updates.actions };
             // Note: Backend needs to implement PUT /api/updateActions/:playlistName/:itemIndex
@@ -508,6 +516,7 @@ const PlaylistEditorPage = () => {
           items={transformItems(playlist.items)}
           onItemMove={handleMoveItem}
           onItemLoopToggle={handleToggleLoop}
+          onItemActionsUpdate={handleUpdateItem}
           onItemClick={(item) => {
             console.log('[DraggableList onItemClick] Item received:', item); // Log the item
             setSelectedTrack(item); // Set the selected track for display
@@ -522,8 +531,18 @@ const PlaylistEditorPage = () => {
       {/* Track Edit Modal */}
       <Modal
         isOpen={isTrackModalOpen}
-        onClose={() => setIsTrackModalOpen(false)} // Keep simple close for clicking outside
-        title="Track Settings"
+        onClose={() => setIsTrackModalOpen(false)} // simple close for clicking outside
+        title={
+          <> 
+            <button
+              onClick={() => setIsTrackModalOpen(false)}
+              className="mr-2 p-1 text-gray-600 hover:text-gray-800"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            Track Settings
+          </>
+        }
         footer={
           <div className="flex justify-between w-full">
             <button

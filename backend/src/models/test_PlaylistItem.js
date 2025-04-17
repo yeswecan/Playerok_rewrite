@@ -6,6 +6,7 @@ class PlaylistItem {
         this.outgoingCommands = [];
         this.ingoingCommands = [];
         this.isPartOfLoop = false;
+        this.actions = []; // New field for combined actions
     }
 
     toJSON() {
@@ -15,7 +16,8 @@ class PlaylistItem {
             previewFilename: this.previewFilename,
             outgoingCommands: this.outgoingCommands,
             ingoingCommands: this.ingoingCommands,
-            isPartOfLoop: this.isPartOfLoop
+            isPartOfLoop: this.isPartOfLoop,
+            actions: this.actions // Include actions in JSON
         };
     }
 
@@ -25,6 +27,7 @@ class PlaylistItem {
         item.outgoingCommands = json.outgoingCommands;
         item.ingoingCommands = json.ingoingCommands;
         item.isPartOfLoop = json.isPartOfLoop;
+        item.actions = Array.isArray(json.actions) ? json.actions : []; // Restore actions or default
         return item;
     }
 }

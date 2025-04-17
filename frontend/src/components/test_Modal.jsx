@@ -12,7 +12,7 @@ const Modal = ({ isOpen, onClose, title, children, footer }) => {
         </div>
 
         {/* Content */}
-        <div className="px-6 py-4 overflow-y-auto flex-grow">
+        <div className="px-6 py-4 overflow-visible flex-grow">
           {children}
         </div>
 
