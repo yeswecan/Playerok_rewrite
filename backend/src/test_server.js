@@ -4,6 +4,10 @@ const path = require('path');
 const fs = require('fs').promises;
 const multer = require('multer');
 const Playlist = require('./models/test_Playlist');
+// Add ffmpeg for thumbnail generation
+const ffmpegPath = require('ffmpeg-static');
+const ffmpeg = require('fluent-ffmpeg');
+ffmpeg.setFfmpegPath(ffmpegPath);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -59,14 +63,40 @@ const VIDEOS_DIR = path.join(__dirname, '../../payload');
 // Serve video files statically
 app.use('/videos', express.static(VIDEOS_DIR));
 
+// Serve preview images statically
+const PREVIEWS_DIR = path.join(__dirname, '../../previews');
+app.use('/previews', express.static(PREVIEWS_DIR));
+
 // Ensure directories exist
 async function ensureDirectories() {
     await fs.mkdir(PLAYLISTS_DIR, { recursive: true });
     await fs.mkdir(VIDEOS_DIR, { recursive: true });
+    await fs.mkdir(PREVIEWS_DIR, { recursive: true });
     console.log('Directories ensured:', {
         PLAYLISTS_DIR,
-        VIDEOS_DIR
+        VIDEOS_DIR,
+        PREVIEWS_DIR
     });
+}
+
+// Generate preview images for all videos without existing thumbnails
+async function generatePreviews() {
+  const files = await fs.readdir(VIDEOS_DIR);
+  const videoFiles = files.filter(f => /\.(mp4|avi|mkv|mov|wmv)$/i.test(f));
+  for (const file of videoFiles) {
+    const previewPath = path.join(PREVIEWS_DIR, `${file}.jpg`);
+    try {
+      await fs.access(previewPath);
+    } catch {
+      console.log(`[generatePreviews] Creating preview for ${file}`);
+      await new Promise((resolve, reject) => {
+        ffmpeg(path.join(VIDEOS_DIR, file))
+          .screenshots({ timestamps: ['50%'], filename: `${file}.jpg`, folder: PREVIEWS_DIR, size: '320x240' })
+          .on('end', resolve)
+          .on('error', reject);
+      });
+    }
+  }
 }
 
 // List all available playlists
@@ -345,6 +375,7 @@ app.use((err, req, res, next) => {
 async function start() {
     try {
         await ensureDirectories();
+        await generatePreviews();
         app.listen(PORT, '0.0.0.0', () => {
             console.log(`Server running on port ${PORT}`);
             console.log('CORS enabled for:', ['http://localhost:5173', 'http://192.168.1.5:5173']);

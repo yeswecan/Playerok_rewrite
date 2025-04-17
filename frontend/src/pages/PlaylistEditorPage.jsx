@@ -379,15 +379,17 @@ const PlaylistEditorPage = () => {
       if (isNaN(originalIndexNum)) {
         console.error('[transformItems] Invalid original index found for looped item:', item);
       }
+      const previewUrl = item.previewUrl || item.preview_url || `${API_URL}/previews/${item.filename}.jpg`;
       return {
-        id: `looped-${item.index}`, // Use original index in ID for stability
+        id: `looped-${item.index}`,
         filename: item.filename,
-        index: idx + 1, // UI index starting from 1
-        originalIndex: isNaN(originalIndexNum) ? -1 : originalIndexNum, // Use numeric, fallback to -1 if invalid
+        previewUrl,
+        index: idx + 1,
+        originalIndex: isNaN(originalIndexNum) ? -1 : originalIndexNum,
         isPartOfLoop: true,
         isPlaying: item.filename === currentTrack,
-        actions: item.actions || [], // Add actions, default to empty array
-        originalData: item // Keep original data
+        actions: item.actions || [],
+        originalData: item
       };
     });
     
@@ -397,15 +399,17 @@ const PlaylistEditorPage = () => {
        if (isNaN(originalIndexNum)) {
         console.error('[transformItems] Invalid original index found for interactive item:', item);
       }
+      const previewUrl = item.previewUrl || item.preview_url || `${API_URL}/previews/${item.filename}.jpg`;
       return {
-        id: `interactive-${item.index}`, // Use original index in ID
+        id: `interactive-${item.index}`,
         filename: item.filename,
-        index: idx + 1, // UI index starting from 1
-        originalIndex: isNaN(originalIndexNum) ? -1 : originalIndexNum, // Use numeric, fallback to -1 if invalid
+        previewUrl,
+        index: idx + 1,
+        originalIndex: isNaN(originalIndexNum) ? -1 : originalIndexNum,
         isPartOfLoop: false,
         isPlaying: item.filename === currentTrack,
-        actions: item.actions || [], // Add actions, default to empty array
-        originalData: item // Keep original data
+        actions: item.actions || [],
+        originalData: item
       };
     });
     

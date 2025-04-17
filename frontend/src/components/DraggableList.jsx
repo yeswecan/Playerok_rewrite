@@ -329,6 +329,13 @@ const DraggableList = ({ items, onItemMove, onItemLoopToggle, onItemClick, onIte
                             <div className="text-gray-700 flex items-center mb-1 cursor-pointer" onClick={() => onItemClick(item)}>
                               <span className="text-gray-600 w-8 mr-2">{item.index}</span>
                               {item.isPlaying && <span className="mr-2">▶️</span>}
+                              {item.previewUrl && (
+                                <img
+                                  src={item.previewUrl}
+                                  alt={`${item.filename} preview`}
+                                  className="w-12 h-8 mr-2 object-cover rounded"
+                                />
+                              )}
                               {item.filename}
                             </div>
                             <div 
@@ -423,6 +430,13 @@ const DraggableList = ({ items, onItemMove, onItemLoopToggle, onItemClick, onIte
                             <div className="text-gray-700 flex items-center mb-1 cursor-pointer" onClick={() => onItemClick(item)}>
                               <span className="text-gray-600 w-8 mr-2">{item.index}</span>
                               {item.isPlaying && <span className="mr-2">▶️</span>}
+                              {item.previewUrl && (
+                                <img
+                                  src={item.previewUrl}
+                                  alt={`${item.filename} preview`}
+                                  className="w-12 h-8 mr-2 object-cover rounded"
+                                />
+                              )}
                               {item.filename}
                             </div>
                             <div 
