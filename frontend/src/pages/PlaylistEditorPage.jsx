@@ -195,8 +195,10 @@ const PlaylistEditorPage = () => {
         throw new Error(errorData.error || `API request failed with status ${response.status}`);
       }
 
-      // Refresh playlist after successful update
-      fetchPlaylist(); 
+      // Refresh playlist after successful update (skip for actions optimistic update)
+      if (Object.keys(updates)[0] !== 'actions') {
+        fetchPlaylist();
+      }
     } catch (error) {
       console.error('Error updating item:', error);
       setError(`Failed to update item: ${error.message}`);
