@@ -2,6 +2,8 @@ import React, { useState, useCallback, useEffect, createContext, useContext, use
 import ReactDOM from 'react-dom';
 import { EditorProvider, useCurrentEditor, EditorContent, ReactNodeViewRenderer, NodeViewWrapper, NodeViewContent } from '@tiptap/react';
 import { ChevronDown } from 'lucide-react';
+import incomingIcon from '../assets/Incoming.png';
+import outgoingIcon from '../assets/Outgoing.png';
 
 // --- Helpers moved outside component ---
 function filterSuggestions(query, registeredActions) {
@@ -30,6 +32,12 @@ function calculateCoordsForInput(inputEl) {
 // --- Hint Context Reference (assuming ActionEditorComponent provides it) ---
 import { HintContext } from './ActionEditorComponent'; // Adjust path if necessary
 
+// Map qualifier IDs to their icons
+const qualifierIconMap = {
+  incoming: incomingIcon,
+  outgoing: outgoingIcon,
+};
+
 // --- React Component for the Action Node View ---
 // Wrap with forwardRef
 const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selected, getPos, deleteNode }, ref) => {
@@ -52,6 +60,8 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
     startInlineEdit,
     stopInlineEdit
   } = hintContext;
+  const displayQualifierOptions = qualifierOptions.filter(opt => opt.id !== 'scheduled');
+  const selectedOptionIcon = qualifierIconMap[qualifier];
   const wrapperRef = useRef(null);
 
   const isCurrentlyEditing = editingNodeId === nodeId;
@@ -278,33 +288,34 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
           </span>
           {/* Qualifier Dropdown Button */}
           <button
-            onMouseDown={(e) => {e.preventDefault(); e.stopPropagation();}} // Prevent blur, stop propagation
+            onMouseDown={(e) => {e.preventDefault(); e.stopPropagation();}}
             onClick={toggleDropdown}
-            className="flex items-center px-1 py-0.5 bg-yellow-200 border-l border-yellow-300 hover:bg-yellow-300 transition-colors relative z-10" // Add z-index
+            className="flex items-center px-1 py-0.5 bg-yellow-200 border-l border-yellow-300 hover:bg-yellow-300 transition-colors relative z-10"
             aria-haspopup="true"
             aria-expanded={isOpen}
           >
+            {selectedOptionIcon && <img src={selectedOptionIcon} alt={selectedOptionLabel} className="h-4 w-auto mr-1 inline-block" />}
             <span className="mr-0.5">{selectedOptionLabel}</span>
             <ChevronDown className="w-4 h-4 flex-shrink-0" />
           </button>
           {/* Qualifier Dropdown List */}
           {isOpen && (
               <div
-                className="absolute top-full right-0 mt-1 w-32 bg-white shadow-lg rounded-md border border-gray-200 z-50" // Position relative to button, ensure high z-index
-                onMouseDown={(e) => e.preventDefault()} // Prevent blur when clicking items
+                className="absolute top-full right-0 mt-1 w-32 bg-white shadow-lg rounded-md border border-gray-200 z-50"
+                onMouseDown={(e) => e.preventDefault()}
               >
-                {qualifierOptions.map((option) => (
+                {displayQualifierOptions.map((option) => (
                   <button
                     key={option.id}
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
                       setIsOpen(false);
-                      // Call the context function directly
                       updateActionQualifier(nodeId, option.id);
                     }}
-                    className="block w-full text-left px-4 py-2 hover:bg-gray-100 first:rounded-t-md last:rounded-b-md"
+                    className="flex items-center block w-full text-left px-4 py-2 hover:bg-gray-100 first:rounded-t-md last:rounded-b-md"
                   >
+                    <img src={qualifierIconMap[option.id]} alt={option.label} className="h-4 w-auto mr-2 inline-block" />
                     {option.label}
                   </button>
                 ))}

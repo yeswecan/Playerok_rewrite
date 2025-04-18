@@ -9,6 +9,15 @@ import SuggestionList from './SuggestionList.jsx';
 import { TextSelection, NodeSelection, Plugin, PluginKey } from 'prosemirror-state';
 import { debounce } from 'lodash-es';
 import { cn } from '../utils';
+// Add imports for qualifier icons
+import incomingIcon from '../assets/Incoming.png';
+import outgoingIcon from '../assets/Outgoing.png';
+
+// Map qualifier IDs to their icons
+const qualifierIconMap = {
+  incoming: incomingIcon,
+  outgoing: outgoingIcon,
+};
 
 // --- Hint Context ---
 export const HintContext = createContext({
@@ -205,7 +214,9 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
 
   // Get qualifierOptions from props via context
   const { qualifierOptions } = useContext(HintContext);
+  const displayQualifierOptions = qualifierOptions.filter(opt => opt.id !== 'scheduled');
   const selectedOptionLabel = qualifierOptions.find(opt => opt.id === qualifier)?.label || qualifierOptions[0].label;
+  const selectedOptionIcon = qualifierIconMap[qualifier];
 
   const handleQualifierChange = (newQualifierId) => {
     updateAttributes({ qualifier: newQualifierId });
@@ -412,17 +423,18 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
             contentEditable="false"
             suppressContentEditableWarning={true}
           >
+            {selectedOptionIcon && (
+              <img src={selectedOptionIcon} alt={selectedOptionLabel} className="h-4 w-auto mr-1 inline-block" />
+            )}
             <span className="mr-0.5">{selectedOptionLabel}</span>
             <ChevronDown className="w-4 h-4 flex-shrink-0" />
           </button>
           {isOpen && (
               <div
                 className="absolute top-full left-0 mt-1 w-32 bg-white shadow-lg rounded-md border border-gray-200 z-50"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                }}
+                onMouseDown={(e) => { e.preventDefault(); }}
               >
-                {qualifierOptions.map((option) => (
+                {displayQualifierOptions.map((option) => (
                   <button
                     key={option.id}
                     onClick={(e) => {
@@ -431,8 +443,9 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
                       setIsOpen(false);
                       hintContext.updateActionQualifier(nodeId, option.id);
                     }}
-                    className="block w-full text-left px-4 py-2 hover:bg-gray-100 first:rounded-t-md last:rounded-b-md"
+                    className="flex items-center block w-full text-left px-4 py-2 hover:bg-gray-100 first:rounded-t-md last:rounded-b-md"
                   >
+                    <img src={qualifierIconMap[option.id]} alt={option.label} className="h-4 w-auto mr-2 inline-block" />
                     {option.label}
                   </button>
                 ))}
