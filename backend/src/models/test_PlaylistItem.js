@@ -7,6 +7,7 @@ class PlaylistItem {
         this.ingoingCommands = [];
         this.isPartOfLoop = false;
         this.actions = []; // New field for combined actions
+        this.duration = ''; // New field for duration
     }
 
     toJSON() {
@@ -17,7 +18,8 @@ class PlaylistItem {
             outgoingCommands: this.outgoingCommands,
             ingoingCommands: this.ingoingCommands,
             isPartOfLoop: this.isPartOfLoop,
-            actions: this.actions // Include actions in JSON
+            actions: this.actions, // Include actions in JSON
+            duration: this.duration // Add duration (format MM:SS) for UI display
         };
     }
 
@@ -28,6 +30,7 @@ class PlaylistItem {
         item.ingoingCommands = json.ingoingCommands;
         item.isPartOfLoop = json.isPartOfLoop;
         item.actions = Array.isArray(json.actions) ? json.actions : []; // Restore actions or default
+        item.duration = json.duration; // Restore duration
         return item;
     }
 }

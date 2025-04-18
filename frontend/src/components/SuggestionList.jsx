@@ -34,7 +34,8 @@ const SuggestionList = ({ items = [], highlightedIndices = [], selectedIndex, on
             ref={listRef}
             className="bg-white rounded-md shadow-lg overflow-y-auto max-h-60 w-48 border border-gray-200 text-sm"
             style={{ zIndex: 1000 }}
-            onMouseDown={(e) => e.preventDefault()} // Prevent blur when clicking list items
+            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }} // Prevent blur and event propagation
+            onClick={(e) => e.stopPropagation()} // Prevent click from bubbling
         >
             {itemsToDisplay.map((item, index) => {
                 const isSelected = index === selectedIndex;

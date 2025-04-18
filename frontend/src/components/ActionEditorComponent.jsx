@@ -1769,9 +1769,29 @@ const ActionEditorComponent = ({
             overflow: visible !important;
             max-height: none !important;
           }
+          /* New Action Editor styling */
+          .action-node-view {
+            background-color: #f2f2f2 !important;
+            border: 1px solid #ccc !important;
+            border-radius: 6px !important;
+            box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);
+          }
+          .action-node-view:hover {
+            background-color: #e5e5e5 !important;
+          }
+          /* Editor container styling */
+          .ProseMirror {
+            background-color: #f8f8f8;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);
+            min-height: 1.5em; /* one line default */
+            padding: 0.5em;
+          }
+          .ProseMirror p { margin: 0; }
         `}
       </style>
-      <div className={`relative ${!isEditorFocused && !suggestionState.editingNodeId ? 'editor-blurred' : ''} ${readOnly ? 'editor-readonly' : ''}`} ref={editorContainerRef}>
+      <div className={`action-editor-wrapper relative ${!isEditorFocused && !suggestionState.editingNodeId ? 'editor-blurred' : ''} ${readOnly ? 'editor-readonly' : ''}`} ref={editorContainerRef}>
         <EditorProvider
           slotBefore={null}
           slotAfter={null}
@@ -1790,7 +1810,7 @@ const ActionEditorComponent = ({
             attributes: {
               class: cn(
                 'prose max-w-full focus:outline-none',
-                readOnly ? 'min-h-0 px-1 py-0.5 text-xs' : 'min-h-[100px] px-4 py-2' // Conditional classes
+                readOnly ? 'min-h-0 px-1 py-0.5 text-xs' : 'min-h-[1.5em] px-4 py-2' // one-line height by default
                ),
             },
             handleDOMEvents: {
@@ -1823,7 +1843,8 @@ const ActionEditorComponent = ({
                  opacity: suggestionState.visible ? 1 : 0,
                  pointerEvents: suggestionState.visible ? 'auto' : 'none'
               }}
-              onMouseDown={(e) => e.preventDefault()}
+              onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+              onClick={(e) => e.stopPropagation()}
               ref={suggestionListRef} // Add a ref to the list container
             >
               <SuggestionList

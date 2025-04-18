@@ -56,6 +56,13 @@ const PlaylistEditorPage = () => {
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
   const [trackToDelete, setTrackToDelete] = useState(null);
   const menuRef = useRef(null);
+  const [showPlaylistActionsModal, setShowPlaylistActionsModal] = useState(false);
+  const [playlistActionsSettings, setPlaylistActionsSettings] = useState({
+    prevTrack: [],
+    nextTrack: [],
+    pause: [],
+    play: [],
+  });
 
   useEffect(() => {
     fetchPlaylist();
@@ -386,6 +393,7 @@ const PlaylistEditorPage = () => {
         isPartOfLoop: true,
         isPlaying: item.filename === currentTrack,
         actions: item.actions || [],
+        duration: item.duration,
         originalData: item
       };
     });
@@ -406,6 +414,7 @@ const PlaylistEditorPage = () => {
         isPartOfLoop: false,
         isPlaying: item.filename === currentTrack,
         actions: item.actions || [],
+        duration: item.duration,
         originalData: item
       };
     });
@@ -443,6 +452,11 @@ const PlaylistEditorPage = () => {
   };
   // --- End Modal Callbacks ---
 
+  const handleSavePlaylistActions = () => {
+    console.log('Saving playlist actions:', playlistActionsSettings);
+    setShowPlaylistActionsModal(false);
+  };
+
   if (isLoading) return (
     <div className="max-w-6xl mx-auto p-6">
       <div className="flex justify-between items-center mb-8">
@@ -477,12 +491,20 @@ const PlaylistEditorPage = () => {
   return (
     <div className="max-w-6xl mx-auto p-6">
       <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold">Editing playlist: {name}</h1>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center">
+          <button
+            onClick={() => navigate('/')}
+            className="bg-blue-500 hover:bg-blue-600 text-white rounded-lg p-2"
+          >
+            <ChevronLeft className="w-6 h-6" />
+          </button>
+          <h1 className="text-3xl font-bold ml-2">Editing playlist: {name}</h1>
+        </div>
+        <div className="flex items-center gap-3">
           <div className="relative" ref={menuRef}>
             <button
               onClick={() => setShowAddMenu(!showAddMenu)}
-              className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+              className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-3 rounded-lg"
             >
               +
             </button>
@@ -504,10 +526,10 @@ const PlaylistEditorPage = () => {
             )}
           </div>
           <button
-            onClick={() => navigate('/')}
-            className="px-4 py-2 text-gray-600 hover:text-gray-800"
+            onClick={() => setShowPlaylistActionsModal(true)}
+            className="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg"
           >
-            Back to Playlists
+            Playlist actions
           </button>
         </div>
       </div>
@@ -805,6 +827,68 @@ const PlaylistEditorPage = () => {
               )}
             </div>
           )}
+        </div>
+      </Modal>
+
+      {/* Playlist Actions Modal */}
+      <Modal
+        isOpen={showPlaylistActionsModal}
+        onClose={() => setShowPlaylistActionsModal(false)}
+        title={
+          <div className="flex items-center">
+            <button onClick={() => setShowPlaylistActionsModal(false)} className="bg-blue-500 hover:bg-blue-600 text-white rounded-lg p-2 mr-2">
+              <ChevronLeft className="w-6 h-6" />
+            </button>
+            Playlist actions
+          </div>
+        }
+        footer={
+          <button onClick={handleSavePlaylistActions} className="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg">
+            Save & quit
+          </button>
+        }
+      >
+        <div className="space-y-6 overflow-auto max-h-[70vh] p-4">
+          {['prevTrack','nextTrack','pause','play'].map(key => (
+            <div key={key} className="border-b pb-4">
+              <h3 className="text-lg font-semibold mb-2">
+                {key === 'prevTrack' && 'Actions that move it to previous track'}
+                {key === 'nextTrack' && 'Actions that move it to next track'}
+                {key === 'pause' && 'Actions that make it pause'}
+                {key === 'play' && 'Actions that make it play'}
+              </h3>
+              <ActionEditorComponent
+                initialActions={playlistActionsSettings[key]}
+                registeredActions={initialRegisteredActions}
+                qualifierOptions={qualifierOptions}
+                defaultQualifier="incoming"
+                onActionCreated={(id, word, qualifier) =>
+                  setPlaylistActionsSettings(prev => ({
+                    ...prev,
+                    [key]: [...prev[key], { id, word, qualifier }]
+                  }))
+                }
+                onActionDeleted={nid =>
+                  setPlaylistActionsSettings(prev => ({
+                    ...prev,
+                    [key]: prev[key].filter(a => a.id !== nid)
+                  }))
+                }
+                onQualifierChanged={(nid, q) =>
+                  setPlaylistActionsSettings(prev => ({
+                    ...prev,
+                    [key]: prev[key].map(a => a.id === nid ? { ...a, qualifier: q } : a)
+                  }))
+                }
+                onActionWordChanged={(nid, w) =>
+                  setPlaylistActionsSettings(prev => ({
+                    ...prev,
+                    [key]: prev[key].map(a => a.id === nid ? { ...a, word: w } : a)
+                  }))
+                }
+              />
+            </div>
+          ))}
         </div>
       </Modal>
     </div>

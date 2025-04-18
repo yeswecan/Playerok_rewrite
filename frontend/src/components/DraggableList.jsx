@@ -3,7 +3,7 @@ import PropTypes from 'prop-types';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { Checkbox } from './ui/checkbox';
 import { cn } from '../utils';
-import { GripVertical } from 'lucide-react';
+import { GripVertical, Play } from 'lucide-react';
 import ActionEditorComponent from './ActionEditorComponent';
 
 const DraggableList = ({ items, onItemMove, onItemLoopToggle, onItemClick, onItemActionsUpdate, registeredActions, qualifierOptions }) => {
@@ -290,9 +290,9 @@ const DraggableList = ({ items, onItemMove, onItemLoopToggle, onItemClick, onIte
                     listRefs.current["checked-list"] = el;
                   }}
                   className={cn(
-                    "min-h-[100px]",
-                    snapshot.isDraggingOver && "bg-blue-50 border-2 border-blue-200 rounded-md",
-                    checkedItems.length === 0 && !snapshot.isDraggingOver && "border-2 border-dashed border-gray-300 rounded-md"
+                    "min-h-[4.5rem] bg-white rounded-md border border-gray-200",
+                    snapshot.isDraggingOver && "bg-gray-50",
+                    checkedItems.length === 0 && !snapshot.isDraggingOver && "border-2 border-dashed border-gray-200"
                   )}
                 >
                   {checkedItems.map((item, index) => (
@@ -304,70 +304,76 @@ const DraggableList = ({ items, onItemMove, onItemLoopToggle, onItemClick, onIte
                     >
                       {(provided, snapshot) => (
                         <li
-                          ref={(el) => {
-                            provided.innerRef(el);
-                            itemRefs.current[item.id] = el;
-                          }}
+                          ref={(el) => { provided.innerRef(el); itemRefs.current[item.id] = el; }}
                           {...provided.draggableProps}
                           className={cn(
-                            "p-3 mb-2 bg-white rounded-md border flex items-center gap-3",
+                            "p-3 mb-2 flex flex-col min-h-[4.5rem] bg-white hover:bg-gray-50 transition-colors rounded-md border border-gray-200 cursor-pointer",
                             snapshot.isDragging && "shadow-lg ring-2 ring-blue-500 bg-blue-50"
                           )}
+                          onClick={(e) => {
+                            // Skip clicks on action editor, its nodes, or UI controls
+                            if (e.target.closest('input, button, .action-node-view, .ProseMirror, .action-editor-wrapper, .suggestion-list-portal')) return;
+                            onItemClick(item);
+                          }}
                         >
-                          <div {...provided.dragHandleProps} className="cursor-grab active:cursor-grabbing">
-                            <GripVertical className="w-4 h-4 text-gray-400" />
-                          </div>
-                          <Checkbox
-                            id={`check-${item.id}`}
-                            checked={item.isPartOfLoop}
-                            onCheckedChange={() => handleCheckboxChange(item.id)}
-                            disabled={isAnimating.current}
-                          />
-                          <div 
-                            className="flex-1 flex flex-col"
-                          >
-                            <div className="text-gray-700 flex items-center mb-1 cursor-pointer" onClick={() => onItemClick(item)}>
-                              <span className="text-gray-600 w-8 mr-2">{item.index}</span>
-                              {item.isPlaying && <span className="mr-2">▶️</span>}
-                              {item.previewUrl && (
-                                <img
-                                  src={item.previewUrl}
-                                  alt={`${item.filename} preview`}
-                                  className="w-12 h-8 mr-2 object-cover rounded"
-                                />
-                              )}
-                              {item.filename}
+                          {/* Header row: drag handle, index/play, loop, preview, metadata */}
+                          <div className="flex items-center h-[4.5rem]">
+                            <div {...provided.dragHandleProps} className="cursor-grab text-gray-500 mr-3 flex items-center justify-center">
+                              <GripVertical className="w-4 h-4" />
                             </div>
-                            <div 
-                              className="ml-10 pl-1 border border-gray-200 rounded-md"
-                              onMouseDown={(e) => e.stopPropagation()}
-                            >
-                              <ActionEditorComponent
-                                key={`${item.id}-editor`}
-                                initialActions={item.actions || []}
-                                registeredActions={registeredActions}
-                                qualifierOptions={qualifierOptions}
-                                defaultQualifier="outgoing"
-                                onActionCreated={(id, word, qualifier) => {
-                                  const current = item.actions || [];
-                                  const newActions = [...current, { id, word, qualifier }];
-                                  onItemActionsUpdate(item.originalIndex, { actions: newActions });
-                                }}
-                                onActionDeleted={(nodeId) => {
-                                  const newActions = (item.actions || []).filter(a => a.id !== nodeId);
-                                  onItemActionsUpdate(item.originalIndex, { actions: newActions });
-                                }}
-                                onQualifierChanged={(nodeId, newQualifier) => {
-                                  const newActions = (item.actions || []).map(a => a.id === nodeId ? { ...a, qualifier: newQualifier } : a);
-                                  onItemActionsUpdate(item.originalIndex, { actions: newActions });
-                                }}
-                                onActionWordChanged={(nodeId, newWord) => {
-                                  const newActions = (item.actions || []).map(a => a.id === nodeId ? { ...a, word: newWord } : a);
-                                  onItemActionsUpdate(item.originalIndex, { actions: newActions });
-                                }}
-                                readOnly={false}
+                            <div className="flex items-center mr-4 flex-shrink-0">
+                              <div className="w-8 h-8 flex items-center justify-center">
+                                {item.isPlaying
+                                  ? <Play size={28} className="text-gray-700" />
+                                  : <span className="text-gray-700 font-semibold text-lg">{item.index}</span>
+                                }
+                              </div>
+                              <Checkbox
+                                className="ml-2"
+                                id={`check-${item.id}`}
+                                checked={item.isPartOfLoop}
+                                onCheckedChange={() => onItemLoopToggle(item.originalIndex)}
+                                disabled={isAnimating.current}
                               />
                             </div>
+                            {item.previewUrl && (
+                              <img
+                                src={item.previewUrl}
+                                alt={`${item.filename} preview`}
+                                className="w-32 h-full object-cover rounded mr-4 flex-shrink-0"
+                              />
+                            )}
+                            <div className="flex flex-col justify-between flex-1 h-full overflow-hidden">
+                              <span className="text-gray-700 font-medium break-words">{item.filename}</span>
+                              <span className="text-gray-400 text-sm">{item.duration ?? '??:??'}</span>
+                            </div>
+                          </div>
+                          {/* Actions row */}
+                          <div className="mt-2">
+                            <ActionEditorComponent
+                              key={`${item.id}-editor`}
+                              initialActions={item.actions || []}
+                              registeredActions={registeredActions}
+                              qualifierOptions={qualifierOptions}
+                              defaultQualifier="outgoing"
+                              onActionCreated={(id, word, qualifier) => {
+                                const newActions = [...(item.actions||[]), { id, word, qualifier }];
+                                onItemActionsUpdate(item.originalIndex, { actions: newActions });
+                              }}
+                              onActionDeleted={(nid) => {
+                                const newActions = (item.actions||[]).filter(a => a.id !== nid);
+                                onItemActionsUpdate(item.originalIndex, { actions: newActions });
+                              }}
+                              onQualifierChanged={(nid, q) => {
+                                const newActions = (item.actions||[]).map(a => a.id === nid ? { ...a, qualifier: q } : a);
+                                onItemActionsUpdate(item.originalIndex, { actions: newActions });
+                              }}
+                              onActionWordChanged={(nid, w) => {
+                                const newActions = (item.actions||[]).map(a => a.id === nid ? { ...a, word: w } : a);
+                                onItemActionsUpdate(item.originalIndex, { actions: newActions });
+                              }}
+                              readOnly={false}
+                            />
                           </div>
                         </li>
                       )}
@@ -391,9 +397,9 @@ const DraggableList = ({ items, onItemMove, onItemLoopToggle, onItemClick, onIte
                     listRefs.current["unchecked-list"] = el;
                   }}
                   className={cn(
-                    "min-h-[100px]",
-                    snapshot.isDraggingOver && "bg-blue-50 border-2 border-blue-200 rounded-md",
-                    uncheckedItems.length === 0 && !snapshot.isDraggingOver && "border-2 border-dashed border-gray-300 rounded-md"
+                    "min-h-[4.5rem] bg-white rounded-md border border-gray-200",
+                    snapshot.isDraggingOver && "bg-gray-50",
+                    uncheckedItems.length === 0 && !snapshot.isDraggingOver && "border-2 border-dashed border-gray-200"
                   )}
                 >
                   {uncheckedItems.map((item, index) => (
@@ -405,70 +411,76 @@ const DraggableList = ({ items, onItemMove, onItemLoopToggle, onItemClick, onIte
                     >
                       {(provided, snapshot) => (
                         <li
-                          ref={(el) => {
-                            provided.innerRef(el);
-                            itemRefs.current[item.id] = el;
-                          }}
+                          ref={(el) => { provided.innerRef(el); itemRefs.current[item.id] = el; }}
                           {...provided.draggableProps}
                           className={cn(
-                            "p-3 mb-2 bg-white rounded-md border flex items-center gap-3",
+                            "p-3 mb-2 flex flex-col min-h-[4.5rem] bg-white hover:bg-gray-50 transition-colors rounded-md border border-gray-200 cursor-pointer",
                             snapshot.isDragging && "shadow-lg ring-2 ring-blue-500 bg-blue-50"
                           )}
+                          onClick={(e) => {
+                            // Skip clicks on action editor, its nodes, or UI controls
+                            if (e.target.closest('input, button, .action-node-view, .ProseMirror, .action-editor-wrapper, .suggestion-list-portal')) return;
+                            onItemClick(item);
+                          }}
                         >
-                          <div {...provided.dragHandleProps} className="cursor-grab active:cursor-grabbing">
-                            <GripVertical className="w-4 h-4 text-gray-400" />
-                          </div>
-                          <Checkbox
-                            id={`check-${item.id}`}
-                            checked={item.isPartOfLoop}
-                            onCheckedChange={() => handleCheckboxChange(item.id)}
-                            disabled={isAnimating.current}
-                          />
-                          <div 
-                            className="flex-1 flex flex-col"
-                          >
-                            <div className="text-gray-700 flex items-center mb-1 cursor-pointer" onClick={() => onItemClick(item)}>
-                              <span className="text-gray-600 w-8 mr-2">{item.index}</span>
-                              {item.isPlaying && <span className="mr-2">▶️</span>}
-                              {item.previewUrl && (
-                                <img
-                                  src={item.previewUrl}
-                                  alt={`${item.filename} preview`}
-                                  className="w-12 h-8 mr-2 object-cover rounded"
-                                />
-                              )}
-                              {item.filename}
+                          {/* Header row: drag handle, index/play, loop, preview, metadata */}
+                          <div className="flex items-center h-[4.5rem]">
+                            <div {...provided.dragHandleProps} className="cursor-grab text-gray-500 mr-3 flex items-center justify-center">
+                              <GripVertical className="w-4 h-4" />
                             </div>
-                            <div 
-                              className="ml-10 pl-1 border border-gray-200 rounded-md"
-                              onMouseDown={(e) => e.stopPropagation()}
-                            >
-                              <ActionEditorComponent
-                                key={`${item.id}-editor`}
-                                initialActions={item.actions || []}
-                                registeredActions={registeredActions}
-                                qualifierOptions={qualifierOptions}
-                                defaultQualifier="outgoing"
-                                onActionCreated={(id, word, qualifier) => {
-                                  const current = item.actions || [];
-                                  const newActions = [...current, { id, word, qualifier }];
-                                  onItemActionsUpdate(item.originalIndex, { actions: newActions });
-                                }}
-                                onActionDeleted={(nodeId) => {
-                                  const newActions = (item.actions || []).filter(a => a.id !== nodeId);
-                                  onItemActionsUpdate(item.originalIndex, { actions: newActions });
-                                }}
-                                onQualifierChanged={(nodeId, newQualifier) => {
-                                  const newActions = (item.actions || []).map(a => a.id === nodeId ? { ...a, qualifier: newQualifier } : a);
-                                  onItemActionsUpdate(item.originalIndex, { actions: newActions });
-                                }}
-                                onActionWordChanged={(nodeId, newWord) => {
-                                  const newActions = (item.actions || []).map(a => a.id === nodeId ? { ...a, word: newWord } : a);
-                                  onItemActionsUpdate(item.originalIndex, { actions: newActions });
-                                }}
-                                readOnly={false}
+                            <div className="flex items-center mr-4 flex-shrink-0">
+                              <div className="w-8 h-8 flex items-center justify-center">
+                                {item.isPlaying
+                                  ? <Play size={28} className="text-gray-700" />
+                                  : <span className="text-gray-700 font-semibold text-lg">{item.index}</span>
+                                }
+                              </div>
+                              <Checkbox
+                                className="ml-2"
+                                id={`check-${item.id}`}
+                                checked={item.isPartOfLoop}
+                                onCheckedChange={() => handleCheckboxChange(item.id)}
+                                disabled={isAnimating.current}
                               />
                             </div>
+                            {item.previewUrl && (
+                              <img
+                                src={item.previewUrl}
+                                alt={`${item.filename} preview`}
+                                className="w-32 h-full object-cover rounded mr-4 flex-shrink-0"
+                              />
+                            )}
+                            <div className="flex flex-col justify-between flex-1 h-full overflow-hidden">
+                              <span className="text-gray-700 font-medium break-words">{item.filename}</span>
+                              <span className="text-gray-400 text-sm">{item.duration ?? '??:??'}</span>
+                            </div>
+                          </div>
+                          {/* Actions row */}
+                          <div className="mt-2">
+                            <ActionEditorComponent
+                              key={`${item.id}-editor`}
+                              initialActions={item.actions || []}
+                              registeredActions={registeredActions}
+                              qualifierOptions={qualifierOptions}
+                              defaultQualifier="outgoing"
+                              onActionCreated={(id, word, qualifier) => {
+                                const newActions = [...(item.actions||[]), { id, word, qualifier }];
+                                onItemActionsUpdate(item.originalIndex, { actions: newActions });
+                              }}
+                              onActionDeleted={(nid) => {
+                                const newActions = (item.actions||[]).filter(a => a.id !== nid);
+                                onItemActionsUpdate(item.originalIndex, { actions: newActions });
+                              }}
+                              onQualifierChanged={(nid, q) => {
+                                const newActions = (item.actions||[]).map(a => a.id === nid ? { ...a, qualifier: q } : a);
+                                onItemActionsUpdate(item.originalIndex, { actions: newActions });
+                              }}
+                              onActionWordChanged={(nid, w) => {
+                                const newActions = (item.actions||[]).map(a => a.id === nid ? { ...a, word: w } : a);
+                                onItemActionsUpdate(item.originalIndex, { actions: newActions });
+                              }}
+                              readOnly={false}
+                            />
                           </div>
                         </li>
                       )}

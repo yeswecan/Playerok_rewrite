@@ -89,11 +89,32 @@ async function generatePreviews() {
       await fs.access(previewPath);
     } catch {
       console.log(`[generatePreviews] Creating preview for ${file}`);
+      // Compute midpoint timestamp with ffprobe
+      const inputPath = path.join(VIDEOS_DIR, file);
+      let durationData;
+      try {
+        durationData = await new Promise((resolve, reject) => {
+          ffmpeg.ffprobe(inputPath, (err, data) => err ? reject(err) : resolve(data));
+        });
+      } catch (probeErr) {
+        console.error(`Error probing duration for ${file}, defaulting to 0:`, probeErr);
+        durationData = { format: { duration: 0 } };
+      }
+      const totalSeconds = durationData.format.duration || 0;
+      const midpoint = totalSeconds > 0 ? totalSeconds / 2 : 0;
+      // Generate a single padded screenshot using scale+pad filters
       await new Promise((resolve, reject) => {
-        ffmpeg(path.join(VIDEOS_DIR, file))
-          .screenshots({ timestamps: ['50%'], filename: `${file}.jpg`, folder: PREVIEWS_DIR, size: '320x240' })
+        ffmpeg(inputPath)
+          .seekInput(midpoint)
+          .videoFilters([
+            'scale=iw*min(320/iw\\,240/ih):ih*min(320/iw\\,240/ih)',
+            'pad=320:240:(320-iw*min(320/iw\\,240/ih))/2:(240-ih*min(320/iw\\,240/ih))/2:black'
+          ])
+          .outputOptions(['-vframes', '1'])
+          .output(previewPath)
           .on('end', resolve)
-          .on('error', reject);
+          .on('error', reject)
+          .run();
       });
     }
   }
@@ -128,6 +149,22 @@ app.get('/api/listPlaylists', async (req, res) => {
 app.get('/api/getPlaylist/:name', async (req, res) => {
     try {
         const playlist = await Playlist.load(path.join(PLAYLISTS_DIR, `${req.params.name}.json`));
+        // Append duration to each item via ffprobe
+        await Promise.all(playlist.items.map(async (item) => {
+            const videoPath = path.join(VIDEOS_DIR, item.filename);
+            try {
+                const metadata = await new Promise((resolve, reject) => {
+                    ffmpeg.ffprobe(videoPath, (err, data) => err ? reject(err) : resolve(data));
+                });
+                const totalSeconds = Math.floor(metadata.format.duration || 0);
+                const minutes = Math.floor(totalSeconds / 60);
+                const seconds = totalSeconds % 60;
+                item.duration = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+            } catch (probeError) {
+                console.error(`Error probing duration for ${item.filename}:`, probeError);
+                item.duration = null;
+            }
+        }));
         res.json(playlist);
     } catch (error) {
         res.status(404).json({ error: 'Playlist not found' });
