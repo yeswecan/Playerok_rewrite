@@ -9,10 +9,16 @@ The Playlist Editor is a drag-and-drop interface that allows users to manage and
 Each Playlist Item consists of:
 
 - **Drag Handle**: A vertical grip icon positioned on the left side of the item that serves as the interaction point for drag operations
+- **Track number that turns into play button or indicator**: depending on whether the playlist is playing and the item is playing,
+numerical index may turn into a play indicator (telling the user this track is playing). If the user hovers the index, it turns into
+play indicator but not in "playing" color.
 - **Loop Checkbox**: A toggle control that determines whether the item is looped (checked) or actionable (unchecked)
-- **Content Area**: The main area displaying: the index in the playlist, the length of the media, the preview image, the filename, and
-the Action Editor
-- **Visual States**: Different visual states for default, hover, dragging, and disabled conditions
+- **Image preview**: A preview for the video that the playlist item represents, fetched from the server
+- **Video length info**: A line that says how long the video is
+- **Action editor**: Action Editor that is a custom made component for this playlist editor that has its own spec in the file "AIDocs/playlist_element_action_editor_spec.md"
+
+
+Playlist item has different visual states for default, hover, dragging, and disabled conditions. TODO: specify which ones
 
 
 ## 3. List Structure

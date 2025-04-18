@@ -560,12 +560,22 @@ const WordSuggestionExtension = Extension.create({
 
                             for (let i = resolvedPos.depth; i >= 0; i--) { // Iterate through depths
                                 let currentParent = resolvedPos.node(i);
-                                let offsetInParent = resolvedPos.posAtIndex(i > 0 ? resolvedPos.index(i - 1) : 0);
-
+                                // Skip levels without children
+                                if (currentParent.childCount === 0) continue;
                                 // Iterate nodes within this parent level, before the cursor's relative position
-                                for (let j = resolvedPos.index(i) -1 ; j >=0; j--) {
-                                    let childNode = currentParent.child(j);
-                                    let childNodePos = resolvedPos.posAtIndex(j, i); // <-- The error might be here
+                                for (let j = resolvedPos.index(i) - 1; j >= 0; j--) {
+                                    if (j < 0 || j >= currentParent.childCount) continue;
+                                    const childNode = currentParent.child(j);
+                                    let childNodePos;
+                                    try {
+                                        childNodePos = resolvedPos.posAtIndex(j, i);
+                                    } catch (e) {
+                                        if (e instanceof RangeError) {
+                                            console.warn(`[WordSuggestionExtension apply] Caught RangeError at posAtIndex(${j}, ${i}). Skipping.`);
+                                            continue;
+                                        }
+                                        throw e;
+                                    }
                                     // -- BEGIN RangeError Fix --
                                     // Check if index 'j' is valid for the current parent before calling posAtIndex
                                     if (j < 0 || j >= currentParent.childCount) {
