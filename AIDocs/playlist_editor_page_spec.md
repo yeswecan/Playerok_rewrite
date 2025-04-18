@@ -21,6 +21,7 @@ Playlist item has defined visual states:
   - Hover: bg-gray-50
   - Dragging: shadow-lg ring-2 ring-blue-500 bg-blue-50
   - Disabled (during animation): opacity-70, pointer-events-none
+  - Cursor States: track rows use `cursor-grab` by default, switch to `cursor-grabbing` while dragging, and use `cursor-pointer` on hover; inside the Actions row (ActionEditorComponent), always use `cursor-default`.
 
 • Actions row beneath the header that contains the ActionEditorComponent and expands the item height as needed
 
@@ -77,6 +78,7 @@ Lists live in the global page scroll; when a list is empty it displays a dashed-
 - **Disabled State**: During animations, both dragging and checkbox interactions are temporarily disabled to prevent conflicting operations
 - **Drag Feedback**: When dragging, the item appears slightly elevated with a shadow effect
 - Items provide visual feedback when hovered; clicking any empty area of a track row opens its ActionEditor modal
+- **Cursor Behavior**: track rows show hand/pointer and grab/grabbing cursors as appropriate for hover and drag; the ActionEditorComponent area within each row always displays the standard arrow cursor (cursor-default).
 
 
 ## 5. Animation Behavior

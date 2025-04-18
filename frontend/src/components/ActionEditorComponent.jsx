@@ -1789,6 +1789,10 @@ const ActionEditorComponent = ({
             padding: 0.5em;
           }
           .ProseMirror p { margin: 0; }
+          /* Override: use default cursor inside action editor */
+          .action-editor-wrapper, .action-editor-wrapper * {
+            cursor: default !important;
+          }
         `}
       </style>
       <div className={`action-editor-wrapper relative ${!isEditorFocused && !suggestionState.editingNodeId ? 'editor-blurred' : ''} ${readOnly ? 'editor-readonly' : ''}`} ref={editorContainerRef}>

@@ -119,36 +119,15 @@ const DraggableList = ({ items, onItemMove, onItemLoopToggle, onItemClick, onIte
       }
     } else {
       // Moving within the same list
-      if (sourceKey === "checked-list") {
-        // Moving within checked list
-        if (destination.index >= checkedItems.length) {
-          // Moving to end of checked list
-          targetIndex = checkedItems.length - 1 >= 0
-            ? checkedItems[checkedItems.length - 1].originalIndex
-            : 0;
-        } else {
-          // Moving to specific position in checked list
-          targetIndex = checkedItems[destination.index].originalIndex;
-          
-          // Adjust for when moving forward in the same list
-          if (source.index < destination.index && originalIndex < targetIndex) {
-            targetIndex--;
-          }
-        }
+      const list = sourceKey === "checked-list" ? checkedItems : uncheckedItems;
+      if (destination.index < list.length) {
+        // Insert before the existing item at destination
+        targetIndex = list[destination.index].originalIndex;
       } else {
-        // Moving within unchecked list
-        if (destination.index >= uncheckedItems.length) {
-          // Moving to end of unchecked list
-          targetIndex = items.length - 1;
-        } else {
-          // Moving to specific position in unchecked list
-          targetIndex = uncheckedItems[destination.index].originalIndex;
-          
-          // Adjust for when moving forward in the same list
-          if (source.index < destination.index && originalIndex < targetIndex) {
-            targetIndex--;
-          }
-        }
+        // Dropped beyond last element: insert after the last
+        const lastItem = list[list.length - 1];
+        const lastIndex = lastItem ? lastItem.originalIndex : items.length - 1;
+        targetIndex = lastIndex + 1;
       }
     }
     
@@ -306,11 +285,13 @@ const DraggableList = ({ items, onItemMove, onItemLoopToggle, onItemClick, onIte
                         <li
                           ref={(el) => { provided.innerRef(el); itemRefs.current[item.id] = el; }}
                           {...provided.draggableProps}
+                          {...provided.dragHandleProps}
                           className={cn(
                             "p-3 mb-2 flex flex-col min-h-[4.5rem] bg-white hover:bg-gray-50 transition-colors rounded-md border border-gray-200 cursor-pointer",
                             snapshot.isDragging && "shadow-lg ring-2 ring-blue-500 bg-blue-50"
                           )}
                           onClick={(e) => {
+                            if (isDragging.current) return;
                             // Skip clicks on action editor, its nodes, or UI controls
                             if (e.target.closest('input, button, .action-node-view, .ProseMirror, .action-editor-wrapper, .suggestion-list-portal')) return;
                             onItemClick(item);
@@ -318,7 +299,7 @@ const DraggableList = ({ items, onItemMove, onItemLoopToggle, onItemClick, onIte
                         >
                           {/* Header row: drag handle, index/play, loop, preview, metadata */}
                           <div className="flex items-center h-[4.5rem]">
-                            <div {...provided.dragHandleProps} className="cursor-grab text-gray-500 mr-3 flex items-center justify-center">
+                            <div className="cursor-grab text-gray-500 mr-3 flex items-center justify-center">
                               <GripVertical className="w-4 h-4" />
                             </div>
                             <div className="flex items-center mr-4 flex-shrink-0">
@@ -413,11 +394,13 @@ const DraggableList = ({ items, onItemMove, onItemLoopToggle, onItemClick, onIte
                         <li
                           ref={(el) => { provided.innerRef(el); itemRefs.current[item.id] = el; }}
                           {...provided.draggableProps}
+                          {...provided.dragHandleProps}
                           className={cn(
                             "p-3 mb-2 flex flex-col min-h-[4.5rem] bg-white hover:bg-gray-50 transition-colors rounded-md border border-gray-200 cursor-pointer",
                             snapshot.isDragging && "shadow-lg ring-2 ring-blue-500 bg-blue-50"
                           )}
                           onClick={(e) => {
+                            if (isDragging.current) return;
                             // Skip clicks on action editor, its nodes, or UI controls
                             if (e.target.closest('input, button, .action-node-view, .ProseMirror, .action-editor-wrapper, .suggestion-list-portal')) return;
                             onItemClick(item);
@@ -425,7 +408,7 @@ const DraggableList = ({ items, onItemMove, onItemLoopToggle, onItemClick, onIte
                         >
                           {/* Header row: drag handle, index/play, loop, preview, metadata */}
                           <div className="flex items-center h-[4.5rem]">
-                            <div {...provided.dragHandleProps} className="cursor-grab text-gray-500 mr-3 flex items-center justify-center">
+                            <div className="cursor-grab text-gray-500 mr-3 flex items-center justify-center">
                               <GripVertical className="w-4 h-4" />
                             </div>
                             <div className="flex items-center mr-4 flex-shrink-0">
