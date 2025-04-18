@@ -202,26 +202,23 @@ const PlaylistEditorPage = () => {
     try {
       console.log(`Moving item from index ${fromIndex} to index ${toIndex}, toggle loop: ${shouldToggleLoop}`);
       
-      // First move the item to its new position
-      const moveResponse = await fetch(`${API_URL}/api/moveItem/${name}/${fromIndex}/${toIndex}`, {
-        method: 'POST',
-      });
-
-      if (!moveResponse.ok) {
-        throw new Error(`Failed to move item: ${moveResponse.statusText}`);
-      }
-      
-      // If we need to toggle the loop status, do it after moving the item
+      // If we need to toggle the loop status, do it before moving the item
       if (shouldToggleLoop) {
-        console.log(`Toggling loop status for item at index ${toIndex}`);
-        
-        const toggleResponse = await fetch(`${API_URL}/api/toggleLoop/${name}/${toIndex}`, {
+        console.log(`Toggling loop status for item at original index ${fromIndex}`);
+        const toggleResponse = await fetch(`${API_URL}/api/toggleLoop/${name}/${fromIndex}`, {
           method: 'POST',
         });
-
         if (!toggleResponse.ok) {
           throw new Error(`Failed to toggle loop status: ${toggleResponse.statusText}`);
         }
+      }
+
+      // Then move the item to its new position
+      const moveResponse = await fetch(`${API_URL}/api/moveItem/${name}/${fromIndex}/${toIndex}`, {
+        method: 'POST',
+      });
+      if (!moveResponse.ok) {
+        throw new Error(`Failed to move item: ${moveResponse.statusText}`);
       }
       
       // Refresh the playlist to show the updated order and status
