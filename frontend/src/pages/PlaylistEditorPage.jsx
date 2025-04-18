@@ -206,36 +206,38 @@ const PlaylistEditorPage = () => {
   };
 
   const handleMoveItem = async (fromIndex, toIndex, shouldToggleLoop = false) => {
+    // Optimistically update playlist order and loop status locally
+    setPlaylist(prev => {
+      if (!prev) return prev;
+      const itemsCopy = [...prev.items];
+      // Remove moved item
+      const [movedItem] = itemsCopy.splice(fromIndex, 1);
+      // Toggle loop status if needed
+      if (shouldToggleLoop) movedItem.isPartOfLoop = !movedItem.isPartOfLoop;
+      // Insert at new position
+      itemsCopy.splice(toIndex, 0, movedItem);
+      // Reindex items
+      itemsCopy.forEach((item, idx) => item.index = idx);
+      return { ...prev, items: itemsCopy };
+    });
     try {
       console.log(`Moving item from index ${fromIndex} to index ${toIndex}, toggle loop: ${shouldToggleLoop}`);
       
-      // If we need to toggle the loop status, do it before moving the item
+      // Toggle loop status via API if needed
       if (shouldToggleLoop) {
         console.log(`Toggling loop status for item at original index ${fromIndex}`);
-        const toggleResponse = await fetch(`${API_URL}/api/toggleLoop/${name}/${fromIndex}`, {
-          method: 'POST',
-        });
-        if (!toggleResponse.ok) {
-          throw new Error(`Failed to toggle loop status: ${toggleResponse.statusText}`);
-        }
+        const toggleResponse = await fetch(`${API_URL}/api/toggleLoop/${name}/${fromIndex}`, { method: 'POST' });
+        if (!toggleResponse.ok) throw new Error(`Failed to toggle loop status: ${toggleResponse.statusText}`);
       }
 
-      // Then move the item to its new position
-      const moveResponse = await fetch(`${API_URL}/api/moveItem/${name}/${fromIndex}/${toIndex}`, {
-        method: 'POST',
-      });
-      if (!moveResponse.ok) {
-        throw new Error(`Failed to move item: ${moveResponse.statusText}`);
-      }
-      
-      // Refresh the playlist to show the updated order and status
-      await fetchPlaylist();
-      console.log('Playlist refreshed after move and toggle operations');
+      // Move the item via API
+      const moveResponse = await fetch(`${API_URL}/api/moveItem/${name}/${fromIndex}/${toIndex}`, { method: 'POST' });
+      if (!moveResponse.ok) throw new Error(`Failed to move item: ${moveResponse.statusText}`);
+      console.log('Move API succeeded');
     } catch (error) {
       console.error('Error moving/updating item:', error);
-      // Show the error to the user
       setError(`Failed to update playlist: ${error.message}`);
-      // Fetch the playlist again to restore the correct state
+      // Restore from server on error
       fetchPlaylist();
     }
   };
