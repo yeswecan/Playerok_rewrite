@@ -54,14 +54,17 @@ const ActionNode = Node.create({
         default: null, // Will be set from props
       },
       nodeId: {
-          default: null,
-          parseHTML: element => element.getAttribute('data-node-id'),
-          renderHTML: attributes => {
-              if (!attributes.nodeId) {
-                return { 'data-node-id': `action_${Date.now()}_${Math.random().toString(36).substring(2, 7)}` };
-              }
-              return { 'data-node-id': attributes.nodeId };
-          },
+        default: null,
+        parseHTML: element => element.getAttribute('data-node-id'),
+        renderHTML: attributes => {
+          if (!attributes.nodeId) {
+            return { 'data-node-id': `action_${Date.now()}_${Math.random().toString(36).substring(2, 7)}` };
+          }
+          return { 'data-node-id': attributes.nodeId };
+        },
+      },
+      equation: {
+        default: '=1',
       },
     };
   },
@@ -71,11 +74,12 @@ const ActionNode = Node.create({
       {
         tag: 'span[data-type="action-node"][data-node-id]',
         getAttrs: domNode => {
-            if (!(domNode instanceof Element)) return false;
-            const id = domNode.getAttribute('data-node-id');
-            const qualifier = domNode.getAttribute('data-qualifier');
-            if (!id || !qualifier) return false;
-            return { qualifier, nodeId: id };
+          if (!(domNode instanceof Element)) return false;
+          const id = domNode.getAttribute('data-node-id');
+          const qualifier = domNode.getAttribute('data-qualifier');
+          const equation = domNode.getAttribute('data-equation') || '=1';
+          if (!id || !qualifier) return false;
+          return { qualifier, nodeId: id, equation };
         },
         contentElement: 'span.action-word-content',
       },
@@ -87,6 +91,7 @@ const ActionNode = Node.create({
        'data-type': 'action-node',
        'data-node-id': node.attrs.nodeId,
        'data-qualifier': node.attrs.qualifier,
+       'data-equation': node.attrs.equation,
        'contenteditable': 'false',
      });
      return [
@@ -131,7 +136,12 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
   const [isEditing, setIsEditing] = useState(false);
   const inputRef = useRef(null);
   const originalWordRef = useRef(node.textContent);
-  const { qualifier, nodeId } = node.attrs || {};
+  const [isEditingEquation, setIsEditingEquation] = useState(false);
+  const equationInputRef = useRef(null);
+  const originalEquationRef = useRef(node.attrs.equation || '');
+  const [localEquation, setLocalEquation] = useState(node.attrs.equation || '');
+  const [hasEquationError, setHasEquationError] = useState(false);
+  const { qualifier, nodeId, equation } = node.attrs || {};
   const hintContext = useContext(HintContext);
   const {
     showHint,
@@ -142,6 +152,7 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
     suggestionStateRef,
     updateActionQualifier,
     updateActionWord,
+    updateActionEquation,
     qualifierOptions = [],  // default empty
     editingNodeId,
     startInlineEdit,
@@ -152,6 +163,30 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
     setOpenQualifierNodeId
   } = hintContext;
   const wrapperRef = useRef(null);
+  // Equation validation
+  const equationPattern = /^[=<>]\d+(\.\d+)?$/;
+  const isEquationValid = (value) => equationPattern.test(value);
+  useEffect(() => {
+    if (isEditingEquation && equationInputRef.current) {
+      equationInputRef.current.focus();
+    }
+  }, [isEditingEquation]);
+  // Commit equation change
+  function handleEquationCommit(value) {
+    const trimmed = value.trim();
+    updateActionEquation(nodeId, trimmed);
+    setIsEditingEquation(false);
+    if (!isEquationValid(trimmed)) {
+      setHasEquationError(true);
+      if (equationInputRef.current) {
+        const rect = equationInputRef.current.getBoundingClientRect();
+        showHint(rect, 'Error: wrong equation.\n It should be a =, < or > and then a number', equationInputRef.current, 'error');
+      }
+    } else {
+      setHasEquationError(false);
+      hideHint();
+    }
+  }
 
   useEffect(() => {
     if (!isOpen) return;
@@ -269,6 +304,13 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
   };
 
   const handleMouseEnter = (e) => {
+    // If equation is invalid, show only the error hint
+    if (hasEquationError) {
+      const targetEl = e.currentTarget;
+      const rect = targetEl.getBoundingClientRect();
+      showHint(rect, 'Error: wrong equation.\nIt should be a =, < or > and then a number', targetEl, 'error');
+      return;
+    }
     // Show node hint on hover: use actionData.hint, then registeredActions hint, then default "Hint"
     const actionData = actionsState.find(a => a.id === nodeId) || {};
     let hintContent = actionData.hint || registeredActions.find(r => r.word === actionData.word)?.hint;
@@ -361,14 +403,14 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
   return (
     <NodeViewWrapper
       ref={wrapperRef}
-      className="action-node-view inline-block bg-yellow-100 hover:bg-yellow-200 rounded px-2 py-1 mx-px text-sm border border-yellow-300 cursor-pointer"
+      className={`action-node-view inline-block bg-yellow-100 hover:bg-yellow-200 rounded px-2 py-1 mx-px text-sm cursor-pointer ${hasEquationError ? 'border-2 border-red-500' : 'border border-yellow-300'}`}
       data-node-id={nodeId}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
       <NodeViewContent className="hidden" ref={ref} />
       {isEditing ? (
-        <span className="inline-flex items-center">
+        <span className="inline-flex items-center relative z-[1003]">
             <input
                 ref={inputRef}
                 defaultValue={originalWordRef.current}
@@ -400,32 +442,59 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
             />
         </span>
       ) : (
-        <span
-          className="inline-flex items-center relative"
-          onMouseEnter={handleMouseEnter}
-          onMouseLeave={handleMouseLeave}
-        >
+        <span className="inline-flex items-center relative" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
+          {/* Name */}
           <span
             className="action-word-content inline mr-1"
             contentEditable="false"
             suppressContentEditableWarning={true}
-            onDoubleClick={() => {
+            onDoubleClick={e => {
+              e.preventDefault();
+              e.stopPropagation();
               originalWordRef.current = node.textContent;
+              // Enter inline name edit
+              startInlineEdit(nodeId, node.textContent);
               setIsEditing(true);
-              // set suggestion state omitted for brevity
             }}
-            onMouseDown={(e) => e.preventDefault()}
+            onMouseDown={e => e.preventDefault()}
           >
             {node.textContent || '...'}
           </span>
+          {/* Equation Field */}
+          <div className="flex items-center">
+            <span className="self-stretch border-l border-gray-500 mx-1" aria-hidden="true" />
+            {isEditingEquation ? (
+              <input
+                ref={equationInputRef}
+                value={localEquation}
+                onChange={e => setLocalEquation(e.target.value)}
+                onBlur={() => handleEquationCommit(localEquation)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') { e.preventDefault(); handleEquationCommit(localEquation); }
+                  else if (e.key === 'Escape') { setLocalEquation(originalEquationRef.current); setIsEditingEquation(false); }
+                }}
+                className="bg-white border border-blue-300 rounded px-1 outline-none text-sm"
+                style={{ minWidth: '50px' }}
+              />
+            ) : (
+              <span
+                className="inline cursor-pointer text-gray-600 px-1"
+                onClick={e => { e.preventDefault(); e.stopPropagation(); originalEquationRef.current = equation; setLocalEquation(equation); setIsEditingEquation(true); }}
+                onMouseDown={e => e.preventDefault()}
+              >
+                {equation}
+              </span>
+            )}
+          </div>
+          {/* Qualifier Dropdown */}
           <button
-            onMouseDown={(e) => e.preventDefault()}
+            onMouseDown={e => e.preventDefault()}
             onClick={toggleDropdown}
             className="flex items-center px-1 py-0.5 bg-yellow-200 border-l border-yellow-300 hover:bg-yellow-300 transition-colors relative"
             aria-haspopup="true"
             aria-expanded={isOpen}
             contentEditable="false"
-            suppressContentEditableWarning={true}
+            suppressContentEditableWarning
           >
             {selectedOptionIcon && (
               <img src={selectedOptionIcon} alt={selectedOptionLabel} className="h-4 w-auto mr-1 inline-block" />
@@ -456,14 +525,11 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
               </div>
           )}
           <button
-            onClick={() => {
-              // Deletion is now handled by handleDocumentChange synchronizing state
-              deleteNode(); // Still need this to trigger the update event for handleDocumentChange
-            }}
+            onClick={() => { deleteNode(); }}
             className="flex items-center justify-center px-1 py-0.5 bg-yellow-300 hover:bg-yellow-400 text-gray-800 border-l border-yellow-300 rounded-r transition-colors"
             title="Delete action"
             contentEditable="false"
-            suppressContentEditableWarning={true}
+            suppressContentEditableWarning
           >
             ×
           </button>
@@ -861,6 +927,7 @@ const ActionEditorComponent = ({
   onActionDeleted,
   onQualifierChanged,
   onActionWordChanged,
+  onActionEquationChanged = () => {},
   initialContent = '',
   initialActions = [],
   readOnly = false, // Add readOnly prop with default false
@@ -899,6 +966,8 @@ const ActionEditorComponent = ({
   const onQualifierChangedRef = useRef(onQualifierChanged);
   const onActionDeletedRef = useRef(onActionDeleted);
   const onActionCreatedRef = useRef(onActionCreated);
+  const onActionEquationChangedRef = useRef(onActionEquationChanged);
+  useEffect(() => { onActionEquationChangedRef.current = onActionEquationChanged; }, [onActionEquationChanged]);
 
   const suggestionListRef = useRef(null); // Define the ref for the suggestion list container
 
@@ -1050,7 +1119,6 @@ const ActionEditorComponent = ({
   const updateActionWord = useCallback((nodeId, newWord) => {
     if (!newWord) return; // Don't update to an empty word
     preventImplicitCreationRef.current = true; // Prevent sync loop
-//    console.log('[ActionEditorComponent] Updating word for node:', nodeId, 'to:', newWord);
     setActionsState(prev => prev.map(action =>
         action.id === nodeId ? { ...action, word: newWord } : action
     ));
@@ -1058,8 +1126,15 @@ const ActionEditorComponent = ({
     // Clear suggestion state after committing inline edit
     setSuggestionState(prev => ({ ...prev, visible: false, forceVisible: false, editingNodeId: null }));
     setTimeout(() => preventImplicitCreationRef.current = false, 0);
-  }, []); // Empty dependency array
+  }, []);
 
+  // New: handle equation updates
+  const updateActionEquation = useCallback((nodeId, newEquation) => {
+    setActionsState(prev => prev.map(action =>
+      action.id === nodeId ? { ...action, equation: newEquation } : action
+    ));
+    onActionEquationChangedRef.current?.(nodeId, newEquation);
+  }, []);
 
   // --- Helper: Convert actionsState to Tiptap content ---
   const generateTiptapContent = useCallback((actions) => {
@@ -1070,7 +1145,7 @@ const ActionEditorComponent = ({
         }
       const nodeJson = {
         type: 'actionNode',
-        attrs: { nodeId: action.id, qualifier: action.qualifier },
+        attrs: { nodeId: action.id, qualifier: action.qualifier, equation: action.equation || '=1' },
         content: [{ type: 'text', text: action.word }],
       };
        // Add a space after each node for separation
@@ -1256,9 +1331,12 @@ const ActionEditorComponent = ({
 
   // --- NEW: Function to show suggestions specifically on focus ---
   const showSuggestionsOnFocus = useCallback(() => {
+    // Skip plugin suggestions if inline editing (name or equation) is active
+    if (suggestionStateRef.current.editingNodeId) {
+      return;
+    }
     const currentEditor = editorInstanceRef.current;
     if (!currentEditor || currentEditor.isDestroyed || currentEditor.isFocused === false) {
-//        console.log('[showSuggestionsOnFocus] Editor not ready or not focused.');
         return; // Don't show if not focused
     }
     console.log('[ActionEditorComponent] Editor activated/Suggestion menu triggered due to: Editor Focus'); // <--- ADDED LOG
@@ -1428,6 +1506,7 @@ const ActionEditorComponent = ({
     hideHint,
     updateActionQualifier,
     updateActionWord,
+    updateActionEquation,
     onActionDeleted: onActionDeletedRef.current,
     onActionCreated: onActionCreatedRef.current,
     onQualifierChanged: onQualifierChangedRef.current,
@@ -1447,7 +1526,7 @@ const ActionEditorComponent = ({
     readOnly,
   }), [
     showHint, hideHint,
-    updateActionQualifier, updateActionWord,
+    updateActionQualifier, updateActionWord, updateActionEquation,
     onActionDeletedRef, onActionCreatedRef, onQualifierChangedRef,
     setSuggestionState, registeredActions, suggestionStateRef,
     qualifierOptions,        // ensure re-memo when options change
@@ -1786,12 +1865,16 @@ const ActionEditorComponent = ({
           /* New Action Editor styling */
           .action-node-view {
             background-color: #f2f2f2 !important;
-            border: 1px solid #ccc !important;
+            /* default border controlled by tailwind classes */
             border-radius: 6px !important;
             box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);
           }
           .action-node-view:hover {
             background-color: #e5e5e5 !important;
+          }
+          /* Error state border override */
+          .action-node-view.border-red-500 {
+            border-width: 2px !important;
           }
           /* Editor container styling */
           .ProseMirror {
@@ -1986,7 +2069,7 @@ function calculateHintPosition(targetRect, hintRect, hintType = 'node') {
 
 // --- Hint Tooltip Component ---
 const HintTooltip = ({ hintState }) => {
-    const { visible, content, targetRect } = hintState;
+    const { visible, content, targetRect, hintType } = hintState;
     const hintRef = useRef(null);
     const [position, setPosition] = useState({ top: -9999, left: -9999 });
 
@@ -2002,10 +2085,13 @@ const HintTooltip = ({ hintState }) => {
 
     if (!visible) return null;
 
+    const tooltipClass = hintType === 'error'
+      ? 'absolute px-2 py-1 bg-red-100 text-red-800 text-xs rounded shadow-md z-[1003] pointer-events-none'
+      : 'absolute px-2 py-1 bg-gray-800 bg-opacity-80 text-white text-xs rounded shadow-md z-[1003] pointer-events-none';
     return (
         <div
             ref={hintRef}
-            className="absolute px-2 py-1 bg-gray-800 bg-opacity-80 text-white text-xs rounded shadow-md z-[1003] pointer-events-none"
+            className={tooltipClass}
             style={{
                 top: `${position.top}px`,
                 left: `${position.left}px`,

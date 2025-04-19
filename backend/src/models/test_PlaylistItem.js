@@ -29,7 +29,9 @@ class PlaylistItem {
         item.outgoingCommands = json.outgoingCommands;
         item.ingoingCommands = json.ingoingCommands;
         item.isPartOfLoop = json.isPartOfLoop;
-        item.actions = Array.isArray(json.actions) ? json.actions : []; // Restore actions or default
+        item.actions = Array.isArray(json.actions)
+            ? json.actions.map(act => ({ ...act, equation: act.equation || '=1' }))
+            : [];
         item.duration = json.duration; // Restore duration
         return item;
     }
