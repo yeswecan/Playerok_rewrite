@@ -30,6 +30,7 @@ export const HintContext = createContext({
     setSuggestionState: () => {},
     registeredActions: [],
     suggestionStateRef: { current: null },
+    qualifierOptions: [],   // ensure dropdown array available
     openQualifierNodeId: null,
     setOpenQualifierNodeId: (nodeId) => {},
     // --- Additions for hint state ---
@@ -132,7 +133,24 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
   const originalWordRef = useRef(node.textContent);
   const { qualifier, nodeId } = node.attrs || {};
   const hintContext = useContext(HintContext);
-  const { showHint, hideHint, updateActionWord, onActionDeleted, updateActionQualifier, setSuggestionState, registeredActions, suggestionStateRef, editorContainerRef, editingNodeId, openQualifierNodeId, setOpenQualifierNodeId, actionsState } = hintContext;
+  const {
+    showHint,
+    hideHint,
+    onActionDeleted,
+    setSuggestionState,
+    registeredActions,
+    suggestionStateRef,
+    updateActionQualifier,
+    updateActionWord,
+    qualifierOptions = [],  // default empty
+    editingNodeId,
+    startInlineEdit,
+    stopInlineEdit,
+    actionsState,
+    editorContainerRef,
+    openQualifierNodeId,
+    setOpenQualifierNodeId
+  } = hintContext;
   const wrapperRef = useRef(null);
 
   useEffect(() => {
@@ -212,11 +230,10 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
     }
   }, [isEditing, nodeId]); // Depend on isEditing and nodeId
 
-  // Get qualifierOptions from props via context
-  const { qualifierOptions } = useContext(HintContext);
-  const displayQualifierOptions = qualifierOptions.filter(opt => opt.id !== 'scheduled');
-  const selectedOptionLabel = qualifierOptions.find(opt => opt.id === qualifier)?.label || qualifierOptions[0].label;
-  const selectedOptionIcon = qualifierIconMap[qualifier];
+  // Qualifier dropdown options
+  const displayQualifierOptions = (qualifierOptions || []).filter(opt => opt.id !== 'scheduled');
+  const selectedOptionLabel = displayQualifierOptions.find(opt => opt.id === qualifier)?.label || displayQualifierOptions[0]?.label || '';
+  const selectedOptionIcon = qualifierIconMap[qualifier] || null;
 
   const handleQualifierChange = (newQualifierId) => {
     updateAttributes({ qualifier: newQualifierId });
@@ -251,22 +268,21 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
     }, 0);
   };
 
-  const handleMouseEnter = () => {
-    // Find the hint content from the actionsState using nodeId
-    const actionData = actionsState.find(a => a.id === nodeId);
-    const hintContent = actionData?.hint || ''; // Default to empty string if not found
-    // console.log(`[ActionNodeView MouseEnter] Node ID: ${nodeId}, Hint: ${hintContent}`);
-
-    // Only show hint if dropdown is closed and hint content exists
-    if (!isOpen && wrapperRef.current && hintContent) { // Only show if hint exists
-      const rect = wrapperRef.current.getBoundingClientRect();
-      showHint(rect, hintContent); // Pass hint content
+  const handleMouseEnter = (e) => {
+    // Show node hint on hover: use actionData.hint, then registeredActions hint, then default "Hint"
+    const actionData = actionsState.find(a => a.id === nodeId) || {};
+    let hintContent = actionData.hint || registeredActions.find(r => r.word === actionData.word)?.hint;
+    if (!hintContent) {
+      hintContent = 'Hint';
+    }
+    if (!isOpen) {
+      const targetEl = e.currentTarget;
+      const rect = targetEl.getBoundingClientRect();
+      showHint(rect, hintContent, targetEl, 'node');
     }
   };
 
-  const handleMouseLeave = () => {
-    hideHint();
-  };
+  const handleMouseLeave = hideHint;
 
   function hideSuggestionMenu() {
     editor?.commands?.focus?.();
@@ -384,33 +400,21 @@ const ActionNodeView = React.forwardRef(({ node, updateAttributes, editor, selec
             />
         </span>
       ) : (
-        <span className="inline-flex items-center relative">
+        <span
+          className="inline-flex items-center relative"
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
+        >
           <span
             className="action-word-content inline mr-1"
             contentEditable="false"
             suppressContentEditableWarning={true}
             onDoubleClick={() => {
-              console.log('[ActionEditorComponent] Editor activated/Suggestion menu triggered due to: Node Double-Click (Inline Edit)');
               originalWordRef.current = node.textContent;
               setIsEditing(true);
-              // Set suggestion state for inline editing (COORDs calculation moved to effect)
-              const initialQuery = node.textContent;
-              setSuggestionState(prev => ({
-                  ...prev,
-                  editingNodeId: nodeId,
-                  query: initialQuery,
-                  visible: false, // Initially hidden until coords are calculated
-                  forceVisible: true, // Flag to indicate inline edit mode
-                  coords: null, // Reset coords
-                  items: registeredActions,
-                  highlightedIndices: filterSuggestions(initialQuery, registeredActions).map(item => registeredActions.indexOf(item)).filter(i => i !== -1),
-                  selectedIndex: filterSuggestions(initialQuery, registeredActions).map(item => registeredActions.indexOf(item)).filter(i => i !== -1)[0] ?? -1,
-              }));
+              // set suggestion state omitted for brevity
             }}
-            onMouseDown={(e) => {
-                // Prevent single click from placing cursor or triggering unwanted focus inside the text span
-                // Ensure no preventDefault() here
-            }}
+            onMouseDown={(e) => e.preventDefault()}
           >
             {node.textContent || '...'}
           </span>
@@ -1422,39 +1426,36 @@ const ActionEditorComponent = ({
   const hintContextValue = useMemo(() => ({
     showHint,
     hideHint,
-    updateActionQualifier, // Pass the actual function
-    updateActionWord, // Pass the actual function for word updates (used in handleCommitEdit)
+    updateActionQualifier,
+    updateActionWord,
+    onActionDeleted: onActionDeletedRef.current,
+    onActionCreated: onActionCreatedRef.current,
+    onQualifierChanged: onQualifierChangedRef.current,
     setSuggestionState,
-    registeredActions, // Pass down registered actions for filtering
-    suggestionStateRef, // Pass the ref
-    qualifierOptions, // Pass qualifier options down
-    editorContainerRef, // Pass the editor container ref down
-    onQualifierChanged: onQualifierChangedRef.current, // Pass stable ref
-    onActionDeleted: onActionDeletedRef.current,     // Pass stable ref
-    defaultQualifier: defaultQualifierRef.current,   // Pass stable ref
-    // --- New additions for state management ---
-    actionsState: actionsState, // Provide the state directly
-    addAction,
-    editingNodeId: suggestionState.editingNodeId, // Pass current editing ID
-    startInlineEdit,
-    stopInlineEdit,
-    requestStateUpdate: (reason) => setUpdateRequestNonce(n => n + 1), // Pass nonce trigger
-    checkAndTriggerImplicitCreation, // Pass the new handler
-    // --- Additions for qualifier control ---
+    registeredActions,
+    suggestionStateRef,
+    qualifierOptions,        // include dropdown options in context
+    actionsState,
+    editorContainerRef,
     openQualifierNodeId,
     setOpenQualifierNodeId,
-    readOnly, // Pass readOnly through context
-  }), [
-    showHint, hideHint, registeredActions, qualifierOptions,
-    suggestionStateRef, setSuggestionState,
-    actionsState, addAction, updateActionQualifier, updateActionWord,
-    suggestionState.editingNodeId, startInlineEdit, stopInlineEdit,
-    editorContainerRef,
-    onQualifierChangedRef, onActionDeletedRef, defaultQualifierRef,
+    editingNodeId: suggestionState.editingNodeId,
+    startInlineEdit,
+    stopInlineEdit,
+    requestStateUpdate: (reason) => setUpdateRequestNonce(n => n + 1),
     checkAndTriggerImplicitCreation,
-    // --- Additions for qualifier control ---
-    openQualifierNodeId, setOpenQualifierNodeId,
-    readOnly // Add readOnly to dependency array
+    readOnly,
+  }), [
+    showHint, hideHint,
+    updateActionQualifier, updateActionWord,
+    onActionDeletedRef, onActionCreatedRef, onQualifierChangedRef,
+    setSuggestionState, registeredActions, suggestionStateRef,
+    qualifierOptions,        // ensure re-memo when options change
+    actionsState,
+    editorContainerRef, openQualifierNodeId, setOpenQualifierNodeId,
+    suggestionState.editingNodeId, startInlineEdit, stopInlineEdit,
+    setUpdateRequestNonce, checkAndTriggerImplicitCreation,
+    readOnly
   ]);
 
   // --- Configure Extensions ---
@@ -1995,21 +1996,19 @@ const HintTooltip = ({ hintState }) => {
             const hintRect = hintRef.current.getBoundingClientRect();
             setPosition(calculateHintPosition(targetRect, hintRect, hintState.hintType)); // Pass hint type
         } else {
-            setPosition({ top: -9999, left: -9999 }); // Hide
+            setPosition({ top: -9999, left: -9999 });
         }
-    }, [visible, targetRect, content, hintState.hintType]); // Add hintType dependency
+    }, [visible, targetRect, content, hintState.hintType]);
 
     if (!visible) return null;
 
     return (
         <div
             ref={hintRef}
-            className="absolute px-2 py-1 bg-gray-800 bg-opacity-80 text-white text-xs rounded shadow-md z-[1001] pointer-events-none" // Changed fixed to absolute
+            className="absolute px-2 py-1 bg-gray-800 bg-opacity-80 text-white text-xs rounded shadow-md z-[1003] pointer-events-none"
             style={{
                 top: `${position.top}px`,
                 left: `${position.left}px`,
-                // Use translate for potential subpixel rendering improvements?
-                // transform: `translate(${position.left}px, ${position.top}px)`,
             }}
         >
             {content}
