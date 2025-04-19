@@ -4,7 +4,7 @@ import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { Checkbox } from './ui/checkbox';
 import { cn } from '../utils';
 import { GripVertical, Play } from 'lucide-react';
-import ActionEditorComponent from './ActionEditorComponent';
+import ActionEditorComponent from './ActionEditor';
 
 const DraggableList = ({ items, onItemMove, onItemLoopToggle, onItemClick, onItemActionsUpdate, registeredActions, qualifierOptions }) => {
   // Track if we're currently in a drag operation

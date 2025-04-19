@@ -9,12 +9,12 @@ to enter one of the name that the backend has already observed,
 and configuring an associated "qualifier" **and "equation"** for every action node.
 
 **2. Component Hierarchy:**
-*   **`TextEditorPage` (`frontend/src/pages/test_TextEditorPage.jsx`):**
+*   **`ActionEditorTestPage` (`frontend/src/pages/ActionEditorTestPage.jsx`):**
     *   Test page that demonstrates and validates the Action Editor functionality.
     *   Provides test data (`registeredActions`, `qualifierOptions`).
     *   Handles callbacks from the editor (`onActionCreated`, etc.).
     *   Is not part of the component, it's an environment to test it
-*   **`ActionEditorComponent` (`frontend/src/components/ActionEditorComponent.jsx`):**
+*   **`ActionEditorComponent` (`frontend/src/components/ActionEditor/ActionEditorComponent.jsx`, re-exported via `src/components/ActionEditor/index.jsx`):**
     *   Main component that implements the Action Editor functionality.
     *   **Manages the internal state (`actionsState` array) which serves as the single source of truth for the actions, including their name, qualifier, and equation.**
     *   Manages the Tiptap editor instance and suggestion menu state.
@@ -39,7 +39,7 @@ and configuring an associated "qualifier" **and "equation"** for every action no
     *   Manages the suggestion menu's state (visibility, items, selection, position) for name editing.
     *   Handles keyboard navigation (Up, Down, Enter, Escape) for the menu.
     *   **Communicates events (like selection, implicit creation triggers) back to `ActionEditorComponent` to update the primary `actionsState`.**
-*   **`SuggestionList`:** A React component that renders the suggestion menu based on state provided by the extension. Handles click selection.
+*   **`SuggestionMenu` (`src/components/ActionEditor/components/SuggestionMenu.jsx`):** Renders the suggestion dropdown (items, highlights, selection handlers).
 *   **Conversion Logic:** Logic within `ActionEditorComponent` that identifies raw text input and triggers updates to the `actionsState` array, which then causes the Tiptap editor to re-render with the new `ActionNode`.
 
 **4. Functionality:**
@@ -105,5 +105,5 @@ and configuring an associated "qualifier" **and "equation"** for every action no
 **6. Context Note:**
 This component configures actions (outgoing commands, incoming events, scheduled events) for a single playlist track. The equation adds a conditional layer to these actions.
 
-**Current Implementation:** Tested in `frontend/src/pages/test_TextEditorPage.jsx`, developed primarily in `frontend/src/components/ActionEditorComponent.jsx`.
+**Current Implementation:** Tested in `frontend/src/pages/ActionEditorTestPage.jsx`, developed primarily in `frontend/src/components/ActionEditor/ActionEditorComponent.jsx`.
 

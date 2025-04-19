@@ -5,13 +5,13 @@ import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import { Node, mergeAttributes, Extension } from '@tiptap/core';
 import { ChevronDown } from 'lucide-react';
-import SuggestionList from './SuggestionList.jsx';
+import SuggestionMenu from './components/SuggestionMenu.jsx';
 import { TextSelection, NodeSelection, Plugin, PluginKey } from 'prosemirror-state';
 import { debounce } from 'lodash-es';
-import { cn } from '../utils';
+import { cn } from '../../utils';
 // Add imports for qualifier icons
-import incomingIcon from '../assets/Incoming.png';
-import outgoingIcon from '../assets/Outgoing.png';
+import incomingIcon from '../../assets/Incoming.png';
+import outgoingIcon from '../../assets/Outgoing.png';
 
 // Map qualifier IDs to their icons
 const qualifierIconMap = {
@@ -1948,7 +1948,7 @@ const ActionEditorComponent = ({
               onClick={(e) => e.stopPropagation()}
               ref={suggestionListRef} // Add a ref to the list container
             >
-              <SuggestionList
+              <SuggestionMenu
                 items={suggestionState.items}
                 selectedIndex={suggestionState.selectedIndex}
                 highlightedIndices={suggestionState.highlightedIndices || []}
