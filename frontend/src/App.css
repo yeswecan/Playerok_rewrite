@@ -40,3 +40,28 @@
 .read-the-docs {
   color: #888;
 }
+
+/* Dark mode overrides */
+body.dark-mode {
+  background-color: #1f1f1f;
+  color: #e0e0e0;
+}
+
+/* Playlist editor container */
+.dark-mode .max-w-6xl {
+  background-color: #2a2a2a;
+}
+
+/* DraggableList items dark style fallback */
+.dark-mode .bg-gray-800 {
+  background-color: #2a2a2a !important;
+}
+.dark-mode .bg-gray-700 {
+  background-color: #383838 !important;
+}
+.dark-mode .border-gray-700 {
+  border-color: #383838 !important;
+}
+.dark-mode .text-gray-100 {
+  color: #f0f0f0 !important;
+}

@@ -7,6 +7,10 @@ const Playlist = require('./models/test_Playlist');
 // Add ffmpeg for thumbnail generation
 const ffmpegPath = require('ffmpeg-static');
 const ffmpeg = require('fluent-ffmpeg');
+const WebSocket = require('ws');
+const MqttWorker = require('./mqtt_worker');
+const mqttWorker = new MqttWorker();
+mqttWorker.start();
 ffmpeg.setFfmpegPath(ffmpegPath);
 
 const app = express();
@@ -66,6 +70,19 @@ app.use('/videos', express.static(VIDEOS_DIR));
 // Serve preview images statically
 const PREVIEWS_DIR = path.join(__dirname, '../../previews');
 app.use('/previews', express.static(PREVIEWS_DIR));
+
+// MQTT API endpoints
+app.get('/api/mqtt/messages', (req, res) => {
+  res.json(mqttWorker.getMessages());
+});
+app.get('/api/mqtt/topics', (req, res) => {
+  res.json(mqttWorker.getTopics());
+});
+app.post('/api/mqtt/publish', (req, res) => {
+  const { topic, payload } = req.body;
+  mqttWorker.publish(topic, payload);
+  res.sendStatus(204);
+});
 
 // Ensure directories exist
 async function ensureDirectories() {
@@ -413,9 +430,30 @@ async function start() {
     try {
         await ensureDirectories();
         await generatePreviews();
-        app.listen(PORT, '0.0.0.0', () => {
+        const server = app.listen(PORT, () => {
             console.log(`Server running on port ${PORT}`);
             console.log('CORS enabled for:', ['http://localhost:5173', 'http://192.168.1.5:5173']);
+        });
+        // WebSocket server
+        const wss = new WebSocket.Server({ server });
+        console.log('[test_server] WebSocket server initialized');
+        const wsClients = new Set();
+        wss.on('connection', (socket) => {
+            console.log('[test_server] WebSocket client connected');
+            wsClients.add(socket);
+            socket.on('close', () => {
+                console.log('[test_server] WebSocket client disconnected');
+                wsClients.delete(socket);
+            });
+        });
+        // Broadcast MQTT messages to WebSocket clients
+        mqttWorker.on('message', (message) => {
+            const msgStr = JSON.stringify(message);
+            wsClients.forEach((client) => {
+                if (client.readyState === WebSocket.OPEN) {
+                    client.send(msgStr);
+                }
+            });
         });
     } catch (error) {
         console.error('Failed to start server:', error);
