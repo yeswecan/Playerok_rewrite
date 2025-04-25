@@ -5,10 +5,12 @@ import PlaylistEditorPage from './pages/PlaylistEditorPage';
 import ActionEditorTestPage from './pages/ActionEditorTestPage';
 import MqttLogViewerPage from './pages/MqttLogViewerPage';
 import MqttTestSenderPage from './pages/MqttTestSenderPage';
+import NotificationManager from './components/Notifications/NotificationManager';
 
 const App = () => {
   return (
     <Router>
+      <NotificationManager />
       <Routes>
         <Route path="/" element={<PlaylistsPage />} />
         <Route path="/playlist/:name" element={<PlaylistEditorPage />} />
