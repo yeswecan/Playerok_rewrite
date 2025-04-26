@@ -16,5 +16,4 @@ const HintContext = React.createContext({
   editingNodeId: null,
 });
 
-export const HintProvider = HintContext.Provider;
 export default HintContext;

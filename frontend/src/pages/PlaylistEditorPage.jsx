@@ -4,7 +4,7 @@ import Modal from '../components/test_Modal';
 import DraggableList from '../components/DraggableList';
 import { API_URL } from '../config';
 // --- Action Editor Imports ---
-import ActionEditorComponent from '../components/ActionEditor'; 
+import ActionEditorComponent from '../components/ActionEditor/ActionEditorComponent.jsx';
 import { ChevronLeft } from 'lucide-react';
 
 // --- Mock Data for Action Editor ---

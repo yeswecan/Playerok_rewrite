@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import ActionEditorComponent from '../components/ActionEditor';
+import ActionEditorComponent from '../components/ActionEditor/ActionEditorComponent.jsx';
 
 // Example dictionary - in real app this would come from your backend/config
 const HIGHLIGHT_DICTIONARY = {
