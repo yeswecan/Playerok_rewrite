@@ -2,11 +2,12 @@
   "name": "playerok-backend",
   "version": "1.0.0",
   "description": "Backend for Playerok media player control system",
-  "main": "src/test_server.js",
+  "main": "src/playerok_dashboard_backend_v2.js",
   "scripts": {
-    "start": "node src/test_server.js",
-    "test": "mocha src/tests/test_*.test.js",
-    "dev": "nodemon src/test_server.js"
+    "start": "node src/playerok_dashboard_backend_v2.js",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "nodemon src/playerok_dashboard_backend_v2.js",
+    "generate-playlist": "node src/test_generatePlaylist.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

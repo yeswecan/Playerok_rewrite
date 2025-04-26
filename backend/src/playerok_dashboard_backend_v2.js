@@ -96,44 +96,91 @@ async function ensureDirectories() {
     });
 }
 
-// Generate preview images for all videos without existing thumbnails
+// Generate preview image and extract metadata for a single video file
+async function generatePreviewAndMetadata(videoFilename) {
+    console.log(`[generatePreviewAndMetadata] Processing ${videoFilename}`);
+    const previewPath = path.join(PREVIEWS_DIR, `${videoFilename}.jpg`);
+    const inputPath = path.join(VIDEOS_DIR, videoFilename);
+    let durationString = '??:??'; // Default duration string
+
+    try {
+        // Check if preview already exists to avoid re-generating
+        try {
+            await fs.access(previewPath);
+            console.log(`[generatePreviewAndMetadata] Preview already exists for ${videoFilename}`);
+        } catch {
+            // Preview doesn't exist, generate it
+            console.log(`[generatePreviewAndMetadata] Creating preview for ${videoFilename}`);
+            
+            let durationData;
+            try {
+                durationData = await new Promise((resolve, reject) => {
+                    ffmpeg.ffprobe(inputPath, (err, data) => err ? reject(err) : resolve(data));
+                });
+            } catch (probeErr) {
+                console.error(`Error probing duration for ${videoFilename}, defaulting to 0:`, probeErr);
+                durationData = { format: { duration: 0 } };
+            }
+            const totalSeconds = durationData.format.duration || 0;
+            const midpoint = totalSeconds > 0 ? totalSeconds / 2 : 0;
+
+            // Generate a single padded screenshot using scale+pad filters
+            await new Promise((resolve, reject) => {
+                ffmpeg(inputPath)
+                    .seekInput(midpoint)
+                    .videoFilters([
+                        'scale=iw*min(320/iw\\,240/ih):ih*min(320/iw\\,240/ih)', // Scale keeping aspect ratio within 320x240
+                        'pad=320:240:(320-iw*min(320/iw\\,240/ih))/2:(240-ih*min(320/iw\\,240/ih))/2:black' // Pad to 320x240
+                    ])
+                    .outputOptions(['-vframes', '1']) // Take only one frame
+                    .output(previewPath)
+                    .on('end', () => {
+                        console.log(`[generatePreviewAndMetadata] Preview created for ${videoFilename}`);
+                        resolve();
+                    })
+                    .on('error', (err) => {
+                        console.error(`Error generating preview for ${videoFilename}:`, err);
+                        reject(err);
+                    })
+                    .run();
+            });
+        }
+
+        // Get duration (even if preview existed)
+        const metadata = await new Promise((resolve, reject) => {
+             ffmpeg.ffprobe(inputPath, (err, data) => err ? reject(err) : resolve(data));
+        });
+        const totalSeconds = Math.floor(metadata.format.duration || 0);
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+        durationString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        console.log(`[generatePreviewAndMetadata] Duration for ${videoFilename}: ${durationString}`);
+
+    } catch (error) {
+        console.error(`[generatePreviewAndMetadata] Failed to process ${videoFilename}:`, error);
+        // Keep default duration string if processing fails
+    }
+
+    // Return filename and duration (or default if error occurred)
+    return {
+        filename: videoFilename,
+        previewPath: `/previews/${videoFilename}.jpg`, // Relative path for client use
+        duration: durationString
+    };
+}
+
+// Generate preview images for all videos without existing thumbnails on startup
 async function generatePreviews() {
   const files = await fs.readdir(VIDEOS_DIR);
   const videoFiles = files.filter(f => /\.(mp4|avi|mkv|mov|wmv)$/i.test(f));
   for (const file of videoFiles) {
+    // Check if preview exists, if not, generate it using the new function
     const previewPath = path.join(PREVIEWS_DIR, `${file}.jpg`);
-    try {
-      await fs.access(previewPath);
-    } catch {
-      console.log(`[generatePreviews] Creating preview for ${file}`);
-      // Compute midpoint timestamp with ffprobe
-      const inputPath = path.join(VIDEOS_DIR, file);
-      let durationData;
-      try {
-        durationData = await new Promise((resolve, reject) => {
-          ffmpeg.ffprobe(inputPath, (err, data) => err ? reject(err) : resolve(data));
-        });
-      } catch (probeErr) {
-        console.error(`Error probing duration for ${file}, defaulting to 0:`, probeErr);
-        durationData = { format: { duration: 0 } };
-      }
-      const totalSeconds = durationData.format.duration || 0;
-      const midpoint = totalSeconds > 0 ? totalSeconds / 2 : 0;
-      // Generate a single padded screenshot using scale+pad filters
-      await new Promise((resolve, reject) => {
-        ffmpeg(inputPath)
-          .seekInput(midpoint)
-          .videoFilters([
-            'scale=iw*min(320/iw\\,240/ih):ih*min(320/iw\\,240/ih)',
-            'pad=320:240:(320-iw*min(320/iw\\,240/ih))/2:(240-ih*min(320/iw\\,240/ih))/2:black'
-          ])
-          .outputOptions(['-vframes', '1'])
-          .output(previewPath)
-          .on('end', resolve)
-          .on('error', reject)
-          .run();
-      });
-    }
+     try {
+       await fs.access(previewPath);
+     } catch {
+       await generatePreviewAndMetadata(file); // Call the single file processor
+     }
   }
 }
 
@@ -330,10 +377,22 @@ app.post('/api/toggleLoop/:name/:index', async (req, res) => {
 app.get('/api/listVideos', async (req, res) => {
     try {
         const files = await fs.readdir(VIDEOS_DIR);
-        const videoFiles = files.filter(file => 
-            /\.(mp4|avi|mkv|mov|wmv)$/i.test(file)
+        const videoFilesInfo = await Promise.all(
+            files
+                .filter(file => /\.(mp4|avi|mkv|mov|wmv)$/i.test(file))
+                .map(async (file) => {
+                    // Optionally, get duration/preview here too, but might be slow for many files
+                    // For now, just return names
+                    const previewExists = await fs.access(path.join(PREVIEWS_DIR, `${file}.jpg`)).then(() => true).catch(() => false);
+                    // We could read duration from a cache/metadata file if performance becomes an issue
+                    return { 
+                        filename: file, 
+                        previewUrl: previewExists ? `/previews/${file}.jpg` : null 
+                        // duration: "..." // Add if needed, but requires ffprobe per file
+                    };
+                })
         );
-        res.json(videoFiles);
+        res.json(videoFilesInfo); // Return richer info
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -346,15 +405,32 @@ app.post('/api/upload', upload.single('video'), async (req, res) => {
             return res.status(400).json({ error: 'No video file uploaded' });
         }
 
-        // Return the filename and other relevant info
+        console.log(`[upload] File ${req.file.filename} uploaded successfully.`);
+
+        // Generate preview and metadata for the uploaded file
+        const videoDetails = await generatePreviewAndMetadata(req.file.filename);
+
+        // Return the filename, generated preview path, duration, and other info
         res.json({
             filename: req.file.filename,
             size: req.file.size,
-            mimetype: req.file.mimetype
+            mimetype: req.file.mimetype,
+            previewUrl: videoDetails.previewPath, // Send preview path back
+            duration: videoDetails.duration      // Send duration back
         });
     } catch (error) {
-        console.error('Error uploading file:', error);
-        res.status(500).json({ error: error.message });
+        console.error('Error uploading file or generating preview:', error);
+        // Try to return basic file info even if preview generation failed
+        if (req.file) {
+             res.status(500).json({ 
+                 error: 'Upload successful, but preview/metadata generation failed.',
+                 filename: req.file.filename,
+                 size: req.file.size,
+                 mimetype: req.file.mimetype
+             });
+        } else {
+             res.status(500).json({ error: error.message });
+        }
     }
 });
 
