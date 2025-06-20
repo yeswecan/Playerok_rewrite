@@ -5,7 +5,10 @@ import DraggableList from '../components/DraggableList';
 import { API_URL } from '../config';
 // --- Action Editor Imports ---
 import ActionEditorComponent from '../components/ActionEditor/ActionEditorComponent.jsx';
-import { ChevronLeft } from 'lucide-react';
+import { ChevronLeft, Plus, Settings } from 'lucide-react';
+// --- DND Imports ---
+import { DndProvider } from 'react-dnd';
+import { HTML5Backend } from 'react-dnd-html5-backend';
 
 // --- Mock Data for Action Editor ---
 const MOCK_HIGHLIGHT_DICTIONARY = {
@@ -371,67 +374,48 @@ const PlaylistEditorPage = () => {
   };
 
   const transformItems = (items) => {
-    if (!items) return [];
+    if (!items) return { looped: [], actionable: [] };
     
-    // console.log('Transforming items:', items); // Keep for debugging if needed
-    
-    // Separate items into two lists
-    const loopedItems = items.filter(item => item.isPartOfLoop);
-    const interactiveItems = items.filter(item => !item.isPartOfLoop);
-    
-    // console.log(`Found ${loopedItems.length} looped items and ${interactiveItems.length} interactive items`);
-    
-    // Transform looped items
-    const transformedLooped = loopedItems.map((item, idx) => {
+    const transformItem = (item, idx, isLooped) => {
       const originalIndexNum = typeof item.index === 'number' ? item.index : parseInt(item.index, 10);
       if (isNaN(originalIndexNum)) {
-        console.error('[transformItems] Invalid original index found for looped item:', item);
+        console.error(`[transformItems] Invalid original index found for ${isLooped ? 'looped' : 'interactive'} item:`, item);
       }
       const previewUrl = item.previewUrl || item.preview_url || `${API_URL}/previews/${item.filename}.jpg`;
+      
+      // --- Add default actionNodeType and actionId to actions ---
+      const processedActions = (item.actions || []).map(action => ({
+        ...action,
+        // Default to 'ItemActionNode' for actions within playlist items
+        actionNodeType: action.actionNodeType || 'ItemActionNode', 
+        // Default actionId - 'Start' seems reasonable for an item action
+        actionId: action.actionId || 'Start', 
+      }));
+      // --- End modification ---
+
       return {
-        id: `looped-${item.index}`,
+        id: `${isLooped ? 'looped' : 'interactive'}-${item.index}`,
         filename: item.filename,
         previewUrl,
         index: idx + 1,
         originalIndex: isNaN(originalIndexNum) ? -1 : originalIndexNum,
-        isPartOfLoop: true,
+        isPartOfLoop: isLooped,
         isPlaying: item.filename === currentTrack,
-        actions: item.actions || [],
+        actions: processedActions, // Use processed actions
         duration: item.duration,
         originalData: item
       };
-    });
+    };
     
-    // Transform interactive items
-    const transformedInteractive = interactiveItems.map((item, idx) => {
-      const originalIndexNum = typeof item.index === 'number' ? item.index : parseInt(item.index, 10);
-       if (isNaN(originalIndexNum)) {
-        console.error('[transformItems] Invalid original index found for interactive item:', item);
-      }
-      const previewUrl = item.previewUrl || item.preview_url || `${API_URL}/previews/${item.filename}.jpg`;
-      return {
-        id: `interactive-${item.index}`,
-        filename: item.filename,
-        previewUrl,
-        index: idx + 1,
-        originalIndex: isNaN(originalIndexNum) ? -1 : originalIndexNum,
-        isPartOfLoop: false,
-        isPlaying: item.filename === currentTrack,
-        actions: item.actions || [],
-        duration: item.duration,
-        originalData: item
-      };
-    });
-    
-    // Return combined array
-    return [...transformedLooped, ...transformedInteractive];
+    const looped = items.filter(item => item.isPartOfLoop).map((item, idx) => transformItem(item, idx, true));
+    const actionable = items.filter(item => !item.isPartOfLoop).map((item, idx) => transformItem(item, idx, false));
+    return { looped, actionable };
   };
 
   // --- Callbacks for ActionEditorComponent within the Modal ---
-  const handleModalActionCreated = (id, word, qualifier) => {
-    console.log(`[Modal Editor] Action created: ${word} (${qualifier}) - ID: ${id}`);
-    const newAction = { id, word, qualifier, hint: MOCK_HIGHLIGHT_DICTIONARY[word]?.hint || `Hint for ${word}` };
-    setEditingTrackActions(prev => [...prev, newAction]);
+  const handleModalActionCreated = (id, word, qualifier, equation = '=1', actionNodeType, actionId) => { // Added default equation & type/id
+    console.log(`[handleModalActionCreated] Action created:`, { id, word, qualifier, equation, actionNodeType, actionId });
+    setEditingTrackActions(prevActions => [...prevActions, { id, word, qualifier, equation, actionNodeType, actionId }]); // Include type/id
   };
 
   const handleModalActionDeleted = (nodeId) => {
@@ -454,11 +438,46 @@ const PlaylistEditorPage = () => {
         action.id === nodeId ? { ...action, word: newWord, hint: newHint } : action
     ));
   };
+
+  const handleModalActionEquationChanged = (nodeId, newEquation) => {
+    console.log(`[Modal Editor] Equation changed for ${nodeId}: ${newEquation}`);
+    setEditingTrackActions(prev => prev.map(action =>
+        action.id === nodeId ? { ...action, equation: newEquation } : action
+    ));
+  };
   // --- End Modal Callbacks ---
 
-  const handleSavePlaylistActions = () => {
-    console.log('Saving playlist actions:', playlistActionsSettings);
-    setShowPlaylistActionsModal(false);
+  const handleSavePlaylistActions = async () => {
+    try {
+      console.log("Saving Playlist Actions:", playlistActionsSettings);
+      // You'll need a backend endpoint to save these playlist-level actions
+      const response = await fetch(`${API_URL}/api/updatePlaylistSettings/${name}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(playlistActionsSettings),
+      });
+      if (!response.ok) throw new Error('Failed to save playlist actions');
+      setShowPlaylistActionsModal(false);
+      // Maybe refetch playlist if settings affect general playlist data
+      // fetchPlaylist();
+    } catch (error) {
+      console.error('Error saving playlist actions:', error);
+      // Display error to user
+    }
+  };
+
+  const handleSaveTrackSettings = async () => {
+    try {
+      console.log(`[handleSaveTrackSettings] Saving actions for track index ${selectedTrack.index}:`, editingTrackActions);
+      // Call handleUpdateItem which now knows how to handle 'actions'
+      await handleUpdateItem(selectedTrack.index, { actions: editingTrackActions });
+      setIsTrackModalOpen(false);
+      setSelectedTrack(null);
+      setEditingTrackActions([]); // Clear modal state
+    } catch (error) {
+      console.error('Error saving track settings:', error);
+      // Optionally display an error message to the user
+    }
   };
 
   if (isLoading) return (
@@ -492,73 +511,96 @@ const PlaylistEditorPage = () => {
     </div>
   );
 
+  const { looped, actionable } = transformItems(playlist.items);
+
   return (
-    <div className="max-w-6xl mx-auto p-6">
-      <div className="flex justify-between items-center mb-8">
-        <div className="flex items-center">
+    <div className="container mx-auto p-4">
+      <DndProvider backend={HTML5Backend}>
+        <div className="flex justify-between items-center mb-4">
           <button
             onClick={() => navigate('/')}
-            className="bg-blue-500 hover:bg-blue-600 text-white rounded-lg p-2"
+            className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-full flex items-center"
+            aria-label="Go back to playlists"
           >
-            <ChevronLeft className="w-6 h-6" />
+            <ChevronLeft size={20} className="mr-1" />
+            Back
           </button>
-          <h1 className="text-3xl font-bold ml-2">Editing playlist: {name}</h1>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="relative" ref={menuRef}>
+          <h1 className="text-2xl font-bold">{playlist.name}</h1>
+          <div className="relative flex space-x-2">
             <button
               onClick={() => setShowAddMenu(!showAddMenu)}
-              className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-3 rounded-lg"
+              className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-full flex items-center"
+              aria-label="Add video item"
             >
-              +
+              <Plus size={20} className="mr-1" /> Add Video
+            </button>
+            <button
+              onClick={() => {
+                setPlaylistActionsSettings(playlist.settings || { prevTrack: [], nextTrack: [], pause: [], play: [] });
+                setShowPlaylistActionsModal(true);
+              }}
+              className="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-full flex items-center"
+              aria-label="Playlist actions"
+            >
+              <Settings size={20} className="mr-1" />
+              Playlist actions
             </button>
             {showAddMenu && (
-              <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg z-10">
-                <button
-                  onClick={() => { setShowAddMenu(false); setIsAddModalOpen(true); }}
-                  className="block w-full text-left px-4 py-2 hover:bg-gray-100"
-                >
-                  Add new video from Player
-                </button>
-                <button
-                  onClick={() => { setShowAddMenu(false); setShowUploadModal(true); }}
-                  className="block w-full text-left px-4 py-2 hover:bg-gray-100"
-                >
-                  Upload a new video
-                </button>
+              <div ref={menuRef} className="absolute right-0 mt-10 w-48 bg-white rounded-md shadow-lg z-10">
+                <ul className="py-1">
+                  <li>
+                    <button
+                      onClick={() => { setShowUploadModal(true); setShowAddMenu(false); }}
+                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                    >
+                      Upload New Video
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      onClick={() => { setIsAddModalOpen(true); setShowAddMenu(false); }}
+                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                    >
+                      Add Existing Video
+                    </button>
+                  </li>
+                </ul>
               </div>
             )}
           </div>
-          <button
-            onClick={() => setShowPlaylistActionsModal(true)}
-            className="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg"
-          >
-            Playlist actions
-          </button>
         </div>
-      </div>
 
-      {playlist && (
+        {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
+          <strong className="font-bold">Error:</strong>
+          <span className="block sm:inline"> {error}</span>
+          <span className="absolute top-0 bottom-0 right-0 px-4 py-3" onClick={() => setError(null)}>
+            <svg className="fill-current h-6 w-6 text-red-500" role="button" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><title>Close</title><path d="M14.348 14.849a1.2 1.2 0 0 1-1.697 0L10 11.819l-2.651 3.029a1.2 1.2 0 1 1-1.697-1.697l2.758-3.15-2.759-3.152a1.2 1.2 0 1 1 1.697-1.697L10 8.183l2.651-3.031a1.2 1.2 0 1 1 1.697 1.697l-2.758 3.152 2.758 3.15a1.2 1.2 0 0 1 0 1.698z"/></svg>
+          </span>
+        </div>}
+
         <DraggableList
-          items={transformItems(playlist.items)}
-          onItemMove={handleMoveItem}
-          onItemLoopToggle={handleToggleLoop}
-          onItemActionsUpdate={handleUpdateItem}
-          onItemClick={(item) => {
-            console.log('[DraggableList onItemClick] Item received:', item); // Log the item
-            setSelectedTrack(item); // Set the selected track for display
-            setEditingTrackActions(item.actions || []); // Initialize modal editor state
-            setIsTrackModalOpen(true);
+          loopedItems={looped}
+          actionableItems={actionable}
+          onMoveItem={handleMoveItem}
+          onToggleLoop={handleToggleLoop}
+          onUpdateItem={handleUpdateItem}
+          currentTrack={currentTrack}
+          onEditActions={(track) => {
+              console.log("[PlaylistEditorPage] onEditActions called for:", track);
+              setSelectedTrack(track);
+              setEditingTrackActions(JSON.parse(JSON.stringify(track.actions || [])));
+              setIsTrackModalOpen(true);
           }}
-          registeredActions={initialRegisteredActions}
-          qualifierOptions={qualifierOptions}
+          onDeleteTrack={(track) => {
+            setTrackToDelete(track);
+            setShowDeleteConfirmation(true);
+          }}
         />
-      )}
+      </DndProvider>
 
-      {/* Track Edit Modal */}
       <Modal
         isOpen={isTrackModalOpen}
-        onClose={() => setIsTrackModalOpen(false)} // simple close for clicking outside
+        onClose={() => { setIsTrackModalOpen(false); setSelectedTrack(null); setEditingTrackActions([]); }}
         title={
           <> 
             <button
@@ -574,7 +616,7 @@ const PlaylistEditorPage = () => {
           <div className="flex justify-between w-full">
             <button
               onClick={() => {
-                setTrackToDelete(selectedTrack); // Keep using selectedTrack here
+                setTrackToDelete(selectedTrack);
                 setShowDeleteConfirmation(true);
               }}
               className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
@@ -582,17 +624,7 @@ const PlaylistEditorPage = () => {
               Delete Track
             </button>
             <button
-              onClick={() => {
-                // Save changes before closing
-                if (selectedTrack && typeof selectedTrack.originalIndex === 'number') {
-                    console.log(`[Save & Close] Saving actions for originalIndex: ${selectedTrack.originalIndex}`);
-                    handleUpdateItem(selectedTrack.originalIndex, { actions: editingTrackActions });
-                } else {
-                    console.error('[Save & Close] Error: selectedTrack or originalIndex is invalid.', selectedTrack);
-                    setError('Error saving: Could not identify the track to update.'); // Show user-facing error
-                }
-                setIsTrackModalOpen(false); // Close after attempting save
-              }}
+              onClick={handleSaveTrackSettings}
               className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
             >
               Save & Close
@@ -621,15 +653,15 @@ const PlaylistEditorPage = () => {
               </label>
               <div className="border rounded-lg p-2 bg-gray-50">
                 <ActionEditorComponent
-                  key={selectedTrack.id} // Add key to force re-mount on track change
-                  initialActions={editingTrackActions} 
-                  registeredActions={initialRegisteredActions} // Use mock data
-                  qualifierOptions={qualifierOptions} // Use mock data
-                  defaultQualifier="outgoing" // Or your preferred default
-                  onActionCreated={handleModalActionCreated}
-                  onActionDeleted={handleModalActionDeleted}
-                  onQualifierChanged={handleModalQualifierChanged}
-                  onActionWordChanged={handleModalActionWordChanged}
+                  key={selectedTrack.id}
+                  initialActions={editingTrackActions}
+                  registeredActions={initialRegisteredActions}
+                  qualifierOptions={qualifierOptions}
+                  nodeType="ItemActionNode"
+                  onActionsChange={(updatedActions) => {
+                     console.log("[Track Settings Modal] onActionsChange:", updatedActions);
+                     setEditingTrackActions(updatedActions);
+                   }}
                 />
               </div>
             </div>
@@ -637,7 +669,6 @@ const PlaylistEditorPage = () => {
         )}
       </Modal>
 
-      {/* Delete Confirmation Modal */}
       <Modal
         isOpen={showDeleteConfirmation}
         onClose={() => setShowDeleteConfirmation(false)}
@@ -664,7 +695,6 @@ const PlaylistEditorPage = () => {
         </p>
       </Modal>
 
-      {/* Add Track Modal */}
       <Modal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
@@ -736,7 +766,6 @@ const PlaylistEditorPage = () => {
         </div>
       </Modal>
 
-      {/* Upload Modal */}
       <Modal
         isOpen={showUploadModal}
         onClose={() => {
@@ -834,7 +863,6 @@ const PlaylistEditorPage = () => {
         </div>
       </Modal>
 
-      {/* Playlist Actions Modal */}
       <Modal
         isOpen={showPlaylistActionsModal}
         onClose={() => setShowPlaylistActionsModal(false)}
@@ -862,33 +890,13 @@ const PlaylistEditorPage = () => {
                 {key === 'play' && 'Actions that make it play'}
               </h3>
               <ActionEditorComponent
+                key={`${key}-actions`}
                 initialActions={playlistActionsSettings[key]}
                 registeredActions={initialRegisteredActions}
                 qualifierOptions={qualifierOptions}
-                defaultQualifier="incoming"
-                onActionCreated={(id, word, qualifier) =>
-                  setPlaylistActionsSettings(prev => ({
-                    ...prev,
-                    [key]: [...prev[key], { id, word, qualifier }]
-                  }))
-                }
-                onActionDeleted={nid =>
-                  setPlaylistActionsSettings(prev => ({
-                    ...prev,
-                    [key]: prev[key].filter(a => a.id !== nid)
-                  }))
-                }
-                onQualifierChanged={(nid, q) =>
-                  setPlaylistActionsSettings(prev => ({
-                    ...prev,
-                    [key]: prev[key].map(a => a.id === nid ? { ...a, qualifier: q } : a)
-                  }))
-                }
-                onActionWordChanged={(nid, w) =>
-                  setPlaylistActionsSettings(prev => ({
-                    ...prev,
-                    [key]: prev[key].map(a => a.id === nid ? { ...a, word: w } : a)
-                  }))
+                nodeType="PlaylistActionNode"
+                onActionsChanged={(newActions) =>
+                  setPlaylistActionsSettings(prev => ({ ...prev, [key]: newActions }))
                 }
               />
             </div>

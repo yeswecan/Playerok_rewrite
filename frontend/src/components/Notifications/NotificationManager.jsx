@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Notification from './Notification';
 
-const WS_URL = 'ws://127.0.0.1:3000'; // Match the log viewer
+const WS_URL = 'ws://176.99.133.223:3000'; // Use server IP
 const DISMISS_TIMEOUT = 3000; // 3 seconds
 const ANIMATION_DURATION = 300; // ms, should match CSS animation
 

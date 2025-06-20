@@ -1,0 +1,74 @@
+/* Editor container styling */
+.action-editor-wrapper .ProseMirror {
+  background-color: #f8f8f8;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);
+  min-height: 1.5em; /* one line default */
+  padding: 0.5em;
+}
+
+.action-editor-wrapper .ProseMirror p { 
+  margin: 0 !important; /* Important to override prose defaults */
+}
+
+.action-editor-wrapper .ProseMirror:focus {
+  outline: none;
+}
+
+/* Optional: Hide default Tiptap empty node placeholder if using custom one */
+.action-editor-wrapper .ProseMirror p.is-editor-empty::before {
+  content: none;
+}
+
+/* Custom Placeholder Styling (applied via JS to wrapper) */
+.action-editor-wrapper[data-placeholder]::after {
+  content: attr(data-placeholder);
+  pointer-events: none;
+  color: #adb5bd; /* Light gray */
+  display: none; /* Hidden by default */
+  margin-left: 5px;
+  font-style: italic;
+}
+
+.action-editor-wrapper.show-placeholder .action-editor-wrapper .ProseMirror p::after {
+  display: inline-block; /* Show only when wrapper has class */
+}
+
+/* Make sure placeholder appears after content */
+.action-editor-wrapper .ProseMirror p {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* DND Drop Target Styling */
+.action-editor-wrapper.is-drag-over {
+  outline: 2px dashed #90cdf4; /* Light blue dashed outline */
+  outline-offset: 2px;
+}
+
+.action-editor-wrapper.can-drop {
+  background-color: #ebf8ff; /* Very light blue background */
+  outline-color: #4299e1; /* Blue solid outline */
+}
+
+.action-editor-wrapper.cannot-drop {
+  background-color: #fff5f5; /* Very light red background */
+  outline-color: #f56565; /* Red solid outline */
+}
+
+/* DND Drop Placeholder Styling */
+.dnd-drop-placeholder {
+  position: absolute; /* Handled inline now, but keep class for clarity */
+  height: 2px; /* Thin line placeholder */
+  width: 80px; /* Approximate width */
+  background-color: #3b82f6; /* Blue color */
+  border-radius: 1px;
+  /* Adjust transform if needed to center precisely under cursor */
+  /* transform: translateY(-50%); */
+}
+
+.dragging-node-hidden {
+  visibility: hidden;
+} 

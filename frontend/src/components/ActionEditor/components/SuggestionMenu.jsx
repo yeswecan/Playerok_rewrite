@@ -1,10 +1,10 @@
 import React, { useRef, useEffect, useLayoutEffect, useState, useContext } from 'react';
-import HintContext from '../context/HintContext'; // Use context for hints
+import ActionNodeContext from '../context/ActionNodeContext'; // RENAMED
 
 const SuggestionMenu = ({ items = [], highlightedIndices = [], selectedIndex, onSelect, query }) => {
     const listRef = useRef(null);
     const [hasHighlighted, setHasHighlighted] = useState(false);
-    const { showHint, hideHint } = useContext(HintContext); // Get hint functions from context
+    const { showHint, hideHint } = useContext(ActionNodeContext); // RENAMED
 
     useEffect(() => {
         setHasHighlighted(highlightedIndices.length > 0);

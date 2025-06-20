@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Modal from '../components/test_Modal';
+import { API_URL } from '../config'; // Use the imported config
 
-const API_URL = 'http://localhost:3000'; // Change from localhost to IP
+// const API_URL = 'http://localhost:3000'; // Change from localhost to IP - REMOVED
 
 const PlaylistsPage = () => {
   const [playlists, setPlaylists] = useState([]);

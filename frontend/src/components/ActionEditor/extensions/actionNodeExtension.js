@@ -7,9 +7,9 @@ const ActionNode = Node.create({
   name: 'actionNode',
   group: 'inline',
   inline: true,
-  atom: true,
   selectable: true,
   draggable: false,
+  atom: true,
   content: 'inline*',
   code: true,
 
@@ -23,13 +23,46 @@ const ActionNode = Node.create({
         parseHTML: element => element.getAttribute('data-node-id'),
         renderHTML: attributes => {
           if (!attributes.nodeId) {
-            return { 'data-node-id': `action_${Date.now()}_${Math.random().toString(36).substring(2, 7)}` };
+            return {};
           }
-          return { 'data-node-id': attributes.nodeId };
+          return {
+            'data-node-id': attributes.nodeId,
+          };
         },
       },
       equation: {
-        default: '=1',
+        default: '',
+        parseHTML: element => element.getAttribute('data-equation'),
+        renderHTML: attributes => ({
+          'data-equation': attributes.equation,
+        }),
+      },
+      actionNodeType: {
+        default: null,
+        parseHTML: element => element.getAttribute('data-node-type'),
+        renderHTML: attributes => {
+          if (!attributes.actionNodeType) return {};
+          return { 'data-node-type': attributes.actionNodeType };
+        },
+      },
+      actionId: {
+        default: null,
+        parseHTML: element => element.getAttribute('data-action-id'),
+        renderHTML: attributes => {
+          if (!attributes.actionId) return {};
+          return { 'data-action-id': attributes.actionId };
+        },
+      },
+      isDragPlaceholder: {
+        default: false,
+        parseHTML: element => element.hasAttribute('data-is-drag-placeholder'),
+        renderHTML: attributes => {
+          if (!attributes.isDragPlaceholder) return {};
+          return { 'data-is-drag-placeholder': 'true' };
+        },
+      },
+      isBeingDragged: {
+        default: false,
       },
     };
   },
@@ -43,8 +76,16 @@ const ActionNode = Node.create({
           const id = domNode.getAttribute('data-node-id');
           const qualifier = domNode.getAttribute('data-qualifier');
           const equation = domNode.getAttribute('data-equation') || '=1';
+          const actionNodeType = domNode.getAttribute('data-node-type');
+          const actionId = domNode.getAttribute('data-action-id');
           if (!id || !qualifier) return false;
-          return { qualifier, nodeId: id, equation };
+          return {
+            qualifier,
+            nodeId: id,
+            equation,
+            actionNodeType: actionNodeType || null,
+            actionId: actionId || null,
+          };
         },
         contentElement: 'span.action-word-content',
       },
@@ -57,11 +98,13 @@ const ActionNode = Node.create({
        'data-node-id': node.attrs.nodeId,
        'data-qualifier': node.attrs.qualifier,
        'data-equation': node.attrs.equation,
+       'data-node-type': node.attrs.actionNodeType,
+       'data-action-id': node.attrs.actionId,
        'contenteditable': 'false',
      });
      return [
         'span',
-        mergedAttrs,
+        Object.fromEntries(Object.entries(mergedAttrs).filter(([_, v]) => v != null)),
         ['span', { class: 'action-word-content' }, 0]
     ];
   },
@@ -86,8 +129,6 @@ const ActionNode = Node.create({
       },
     };
   },
-
-  atom: true,
 });
 
 export default ActionNode;

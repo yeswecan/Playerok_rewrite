@@ -1,5 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import ActionEditorComponent from '../components/ActionEditor/ActionEditorComponent.jsx';
+import React, { useState, useCallback } from 'react';
+// import { ActionEditorComponent } from '../components/ActionEditor'; // Assuming index export was incorrect
+import ActionEditorComponent from '../components/ActionEditor/ActionEditorComponent.jsx'; // Direct import
+import { DndProvider } from 'react-dnd';
+import { HTML5Backend } from 'react-dnd-html5-backend';
+// import './ActionEditorTestPage.css'; // Removed import as file doesn't exist
 
 // Example dictionary - in real app this would come from your backend/config
 const HIGHLIGHT_DICTIONARY = {
@@ -78,126 +82,252 @@ const initialRegisteredActions = Object.entries(HIGHLIGHT_DICTIONARY).map(([word
 const qualifierOptions = [
   { id: "incoming", label: "Incoming" },
   { id: "outgoing", label: "Outgoing" },
-  { id: "scheduled", label: "Scheduled" },
+  // { id: "scheduled", label: "Scheduled" }, // Removed as per user feedback
+];
+
+// Initial state for the editors
+const initialActions1 = [
+  { id: 'item-act-1', word: 'start_playback', qualifier: 'incoming', equation: '=1', actionNodeType: 'ItemActionNode', actionId: 'Start' },
+  { id: 'item-act-2', word: 'set_volume', qualifier: 'outgoing', equation: '>50', actionNodeType: 'ItemActionNode', actionId: 'Stop' },
+];
+
+const initialActions2 = [
+  { id: 'pl-act-1', word: 'next_track', qualifier: 'incoming', equation: '=1', actionNodeType: 'PlaylistActionNode', actionId: 'next' },
+  { id: 'pl-act-2', word: 'pause_all', qualifier: 'scheduled', equation: '<10', actionNodeType: 'PlaylistActionNode', actionId: 'pause' },
+];
+
+// Initial state for the third editor (same type as editor 1)
+const initialActions3 = [
+  { id: 'item-act-3', word: 'another_item_action', qualifier: 'scheduled', equation: '=0', actionNodeType: 'ItemActionNode', actionId: 'Start' },
 ];
 
 const ActionEditorTestPage = () => {
-  // Use the formatted array for initial state
-  const [registeredActions, setRegisteredActions] = useState(initialRegisteredActions);
+  const [actionsState1, setActionsState1] = useState(initialActions1);
+  const [actionsState2, setActionsState2] = useState(initialActions2);
+  const [actionsState3, setActionsState3] = useState(initialActions3); // State for Editor 3
 
-  // --- Step 8: Define meaningful initial state --- 
-  const [testActions, setTestActions] = useState([
-    { id: 'init1', word: 'startup', qualifier: 'outgoing', hint: `Hint: ${Math.random().toFixed(3)}` },
-    { id: 'init2', word: 'another', qualifier: 'scheduled', hint: `Hint: ${Math.random().toFixed(3)}` }
-  ]);
+  // --- Callbacks for Editor 1 --- //
+  const handleActionCreated1 = useCallback((action) => {
+    console.log('Action created in Editor 1:', action);
+  }, []);
 
-  // --- Step 8: Function to add an action externally ---
+  const handleActionDeleted1 = useCallback((actionId) => {
+    console.log('Action deleted in Editor 1:', actionId);
+  }, []);
+
+  const handleActionWordChanged1 = useCallback((actionId, newWord) => {
+    console.log('Editor 1 Word Change:', actionId, newWord);
+  }, []);
+
+  const handleActionQualifierChanged1 = useCallback((actionId, newQualifier) => {
+    console.log('Editor 1 Qualifier Change:', actionId, newQualifier);
+  }, []);
+
+  const handleActionEquationChanged1 = useCallback((actionId, newEquation) => {
+    console.log('Editor 1 Equation Change:', actionId, newEquation);
+  }, []);
+
+  // --- Callbacks for Editor 2 --- //
+  const handleActionCreated2 = useCallback((action) => {
+    console.log('Action created in Editor 2:', action);
+  }, []);
+
+  const handleActionDeleted2 = useCallback((actionId) => {
+    console.log('Action deleted in Editor 2:', actionId);
+  }, []);
+
+  const handleActionWordChanged2 = useCallback((actionId, newWord) => {
+    console.log('Editor 2 Word Change:', actionId, newWord);
+  }, []);
+
+  const handleActionQualifierChanged2 = useCallback((actionId, newQualifier) => {
+    console.log('Editor 2 Qualifier Change:', actionId, newQualifier);
+  }, []);
+
+  const handleActionEquationChanged2 = useCallback((actionId, newEquation) => {
+    console.log('Editor 2 Equation Change:', actionId, newEquation);
+  }, []);
+
+  // --- Callbacks for Editor 3 --- //
+  const handleActionCreated3 = useCallback((action) => {
+    console.log('Action created in Editor 3:', action);
+  }, []);
+
+  const handleActionDeleted3 = useCallback((actionId) => {
+    console.log('Action deleted in Editor 3:', actionId);
+  }, []);
+
+  const handleActionWordChanged3 = useCallback((actionId, newWord) => {
+    console.log('Editor 3 Word Change:', actionId, newWord);
+  }, []);
+
+  const handleActionQualifierChanged3 = useCallback((actionId, newQualifier) => {
+    console.log('Editor 3 Qualifier Change:', actionId, newQualifier);
+  }, []);
+
+  const handleActionEquationChanged3 = useCallback((actionId, newEquation) => {
+    console.log('Editor 3 Equation Change:', actionId, newEquation);
+  }, []);
+
+  // --- Unified Drop Handler --- //
+  const handleActionDrop = useCallback((droppedActionData, targetEditorId, targetIndex) => {
+    console.log(`Action dropped:`, droppedActionData, `Target Editor:`, targetEditorId, `Target Index:`, targetIndex);
+
+    // Determine source and target states/setters
+    let sourceSetter;
+    let targetSetter;
+
+    // Find which state array contains the dropped item's ID
+    const isInEditor1 = actionsState1.some(action => action.id === droppedActionData.id);
+    const isInEditor2 = actionsState2.some(action => action.id === droppedActionData.id);
+    const isInEditor3 = actionsState3.some(action => action.id === droppedActionData.id);
+
+    if (isInEditor1) {
+      sourceSetter = setActionsState1;
+    } else if (isInEditor2) {
+      sourceSetter = setActionsState2;
+    } else if (isInEditor3) {
+      sourceSetter = setActionsState3;
+    } else {
+      console.error("Could not find source editor for dropped item:", droppedActionData.id);
+      return; // Should not happen if item is dragged from one of the editors
+    }
+
+    if (targetEditorId === 'editor1') {
+      targetSetter = setActionsState1;
+    } else if (targetEditorId === 'editor2') {
+      targetSetter = setActionsState2;
+    } else if (targetEditorId === 'editor3') {
+      targetSetter = setActionsState3;
+    } else {
+      console.error("Invalid target editor ID:", targetEditorId);
+      return;
+    }
+
+    // Remove from source
+    if (sourceSetter) {
+        sourceSetter(prevState => prevState.filter(action => action.id !== droppedActionData.id));
+    }
+
+    // Add to target (at specified index or end if null/undefined)
+    if (targetSetter) {
+        targetSetter(prevState => {
+            const newArray = [...prevState];
+            // Ensure the dropped data matches the target editor's nodeType structure if necessary
+            // (Here, assuming the drop is allowed, so types are compatible)
+            const itemToAdd = { ...droppedActionData }; // Create a copy
+
+            if (targetIndex !== null && targetIndex !== undefined && targetIndex >= 0 && targetIndex <= newArray.length) {
+                newArray.splice(targetIndex, 0, itemToAdd);
+            } else {
+                newArray.push(itemToAdd); // Add to end if index is invalid or not provided
+            }
+            return newArray;
+        });
+    }
+
+  }, [actionsState1, actionsState2, actionsState3]); // Depend on all states
+
+  // --- Functions for external control buttons (Optional, kept for testing) --- //
   const addExternalAction = () => {
     const newAction = {
-      id: `external_${Date.now()}`,
-      word: 'externalAction',
-      qualifier: 'incoming',
-      hint: `Hint: ${Math.random().toFixed(3)}`
+      id: `ext-${Date.now()}`,
+      word: `ExternalAction${Math.floor(Math.random() * 100)}`,
+      qualifier: qualifierOptions[Math.floor(Math.random() * qualifierOptions.length)].id,
+      equation: `=${Math.floor(Math.random() * 100)}`,
+      actionNodeType: 'ItemActionNode', // Default to item for external add
+      actionId: 'Start' // Default actionId
     };
-    setTestActions(prev => [...prev, newAction]);
-    console.log('[ActionEditorTestPage] Added external action. New state:', [...testActions, newAction]);
+    setActionsState1(prev => [...prev, newAction]);
+    console.log('Added external action to Editor 1');
   };
 
-  // --- Step 8: Function to remove an action externally ---
   const removeExternalAction = () => {
-    if (testActions.length > 0) {
-        const idToRemove = testActions[0].id;
-        setTestActions(prev => prev.filter(action => action.id !== idToRemove));
-        console.log(`[ActionEditorTestPage] Removed external action (ID: ${idToRemove}). New state:`, testActions.filter(action => action.id !== idToRemove));
-    } else {
-        console.log('[ActionEditorTestPage] No actions to remove.');
-    }
+    setActionsState1(prev => prev.slice(1)); // Remove the first element
+    console.log('Removed first action from Editor 1');
   };
-
-  // Callback handlers
-  const handleActionCreated = (id, word, qualifier) => {
-    console.log(`[ActionEditorTestPage] Action created: ${word} (${qualifier}) - ID: ${id}`);
-    // Update local state ONLY if the action isn't already there (handles sync)
-    const newHint = `Hint: ${Math.random().toFixed(3)}`;
-    setTestActions(prev => {
-        if (prev.some(a => a.id === id)) {
-            return prev; // Already exists, likely from initial state or external add
-        }
-        return [...prev, { id, word, qualifier, hint: newHint }];
-    });
-    // Update registered actions if the word is new
-    if (!registeredActions.some(action => action.word === word)) {
-      setRegisteredActions(prev => [...prev, { word: word, hint: `Hint for new: ${word}` }]);
-    }
-  };
-
-  const handleActionDeleted = (nodeId) => {
-    console.log(`[ActionEditorTestPage] Action deleted callback: ${nodeId}`);
-    // Update local state to remove the action
-    setTestActions(prev => prev.filter(action => action.id !== nodeId));
-  };
-
-  const handleQualifierChanged = (nodeId, newQualifier) => {
-    console.log(`[ActionEditorTestPage] Qualifier changed for ${nodeId}: ${newQualifier}`);
-    // Update local state
-    setTestActions(prev => prev.map(action =>
-        action.id === nodeId ? { ...action, qualifier: newQualifier } : action
-    ));
-  };
-
-  const handleActionWordChanged = (nodeId, newWord) => {
-    console.log(`[DEBUG][ActionEditorTestPage] handleActionWordChanged called for nodeId: ${nodeId}, newWord: ${newWord}`);
-    // Update local state
-    setTestActions(prev => prev.map(action =>
-        action.id === nodeId ? { ...action, word: newWord } : action
-    ));
-  };
-
-  // --- Add a useEffect to log when testActions changes --- 
-  useEffect(() => {
-    console.log('[ActionEditorTestPage] testActions state updated:', testActions);
-  }, [testActions]);
 
   return (
-    <div className="container mx-auto p-4">
-      <h1 className="text-2xl font-bold mb-4">Action Editor Test Page</h1>
+    <DndProvider backend={HTML5Backend}>
+      <div className="action-editor-test-page" style={{ padding: '20px', fontFamily: 'sans-serif' }}>
+        <h1>Action Editor Test Page</h1>
 
-      {/* --- Step 8: Add buttons for external control --- */}
-      <div className="mb-4 space-x-2">
-          <button
-              onClick={addExternalAction}
-              className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
-          >
-              Add action node
-          </button>
-          <button
-              onClick={removeExternalAction}
-              className="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded"
-          >
-              Remove first action node
-          </button>
-      </div>
+        <div className="editor-section" style={{ marginBottom: '30px', border: '1px solid #eee', padding: '15px' }}>
+          <h2>Editor 1 (Item Actions - `ItemActionNode`)</h2>
+          <div className="editor-container" style={{ marginBottom: '10px' }}>
+            <ActionEditorComponent
+              key="editor1"
+              editorId="editor1"
+              initialActions={actionsState1}
+              registeredActions={initialRegisteredActions}
+              qualifierOptions={qualifierOptions}
+              nodeType="ItemActionNode"
+              onActionCreated={handleActionCreated1}
+              onActionDeleted={handleActionDeleted1}
+              onActionWordChanged={handleActionWordChanged1}
+              onActionQualifierChanged={handleActionQualifierChanged1}
+              onActionEquationChanged={handleActionEquationChanged1}
+              onActionDrop={handleActionDrop}
+              placeholderText="Add item action..."
+            />
+          </div>
+          <pre className="state-display" style={{ background: '#f0f0f0', padding: '10px', fontSize: '0.8em', whiteSpace: 'pre-wrap' }}>
+            {JSON.stringify(actionsState1, null, 2)}
+          </pre>
+          <button onClick={addExternalAction} style={{ marginRight: '5px' }}>Add Action to Editor 1</button>
+          <button onClick={removeExternalAction}>Remove First from Editor 1</button>
+        </div>
 
-      <div className="border rounded-lg shadow-sm">
-        <ActionEditorComponent
-          registeredActions={registeredActions} // Pass the dynamic list of objects
-          qualifierOptions={qualifierOptions}
-          defaultQualifier="incoming"
-          onActionCreated={handleActionCreated}
-          onActionDeleted={handleActionDeleted}
-          onQualifierChanged={handleQualifierChanged}
-          onActionWordChanged={handleActionWordChanged}
-          placeholder="Type to add actions..."
-          initialActions={testActions} // Pass the state variable
-        />
-      </div>
+        <div className="editor-section" style={{ marginBottom: '30px', border: '1px solid #eee', padding: '15px' }}>
+          <h2>Editor 3 (Item Actions - `ItemActionNode`)</h2>
+          <div className="editor-container" style={{ marginBottom: '10px' }}>
+            <ActionEditorComponent
+              key="editor3"
+              editorId="editor3"
+              initialActions={actionsState3}
+              registeredActions={initialRegisteredActions}
+              qualifierOptions={qualifierOptions}
+              nodeType="ItemActionNode" // Same type as Editor 1
+              onActionCreated={handleActionCreated3}
+              onActionDeleted={handleActionDeleted3}
+              onActionWordChanged={handleActionWordChanged3}
+              onActionQualifierChanged={handleActionQualifierChanged3}
+              onActionEquationChanged={handleActionEquationChanged3}
+              onActionDrop={handleActionDrop}
+              placeholderText="Add another item action..."
+            />
+          </div>
+          <pre className="state-display" style={{ background: '#f0f0f0', padding: '10px', fontSize: '0.8em', whiteSpace: 'pre-wrap' }}>
+            {JSON.stringify(actionsState3, null, 2)}
+          </pre>
+        </div>
 
-      {/* Optional: Display current state for debugging */}
-      <div className="mt-4 p-2 border bg-gray-50 rounded">
-          <h2 className="text-lg font-semibold">Current Parent State (testActions):</h2>
-          <pre className="text-xs">{JSON.stringify(testActions, null, 2)}</pre>
+        <div className="editor-section" style={{ marginBottom: '30px', border: '1px solid #eee', padding: '15px' }}>
+          <h2>Editor 2 (Playlist Actions - `PlaylistActionNode`)</h2>
+          <div className="editor-container" style={{ marginBottom: '10px' }}>
+            <ActionEditorComponent
+              key="editor2"
+              editorId="editor2"
+              initialActions={actionsState2}
+              registeredActions={initialRegisteredActions}
+              qualifierOptions={qualifierOptions}
+              nodeType="PlaylistActionNode"
+              onActionCreated={handleActionCreated2}
+              onActionDeleted={handleActionDeleted2}
+              onActionWordChanged={handleActionWordChanged2}
+              onActionQualifierChanged={handleActionQualifierChanged2}
+              onActionEquationChanged={handleActionEquationChanged2}
+              onActionDrop={handleActionDrop}
+              placeholderText="Add playlist action..."
+            />
+          </div>
+          <pre className="state-display" style={{ background: '#f0f0f0', padding: '10px', fontSize: '0.8em', whiteSpace: 'pre-wrap' }}>
+            {JSON.stringify(actionsState2, null, 2)}
+          </pre>
+        </div>
+
       </div>
-    </div>
+    </DndProvider>
   );
 };
 
