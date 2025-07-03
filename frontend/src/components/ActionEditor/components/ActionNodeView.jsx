@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useContext, useCallback } from 'react';
-import { NodeViewWrapper, NodeViewContent } from '@tiptap/react';
+import { NodeViewWrapper } from '@tiptap/react';
 import { ChevronDown, GripVertical, X } from 'lucide-react';
 import ActionNodeContext from '../context/ActionNodeContext';
 import { cn } from '../../../utils'; // Adjusted path for utils
@@ -16,6 +16,12 @@ const qualifierIconMap = {
   outgoing: outgoingIcon,
 };
 
+const colorClasses = {
+  incoming: 'bg-green-100 border-green-200 text-green-800',
+  outgoing: 'bg-yellow-100 border-yellow-200 text-yellow-800',
+  default: 'bg-gray-100 border-gray-200 text-gray-800',
+};
+
 // Define the drag item type
 // REMOVED: const ItemTypes = {
 //   ACTION_NODE: 'ActionNodeItem',
@@ -25,11 +31,7 @@ const qualifierIconMap = {
 // Restore React.memo
 const ActionNodeView = React.memo(({ node, updateAttributes, editor, selected, getPos, deleteNode }, ref) => {
   // Destructure ALL necessary attributes and content here
-  const { nodeId: id, qualifier, equation, actionNodeType, actionId, isDragPlaceholder, isBeingDragged } = node.attrs;
-  const word = node.textContent; // Capture textContent here
-
-  // === DND Context === REMOVED
-  // const { currentlyDraggedItemId, setCurrentlyDraggedItemId } = useContext(ActionNodeDndContext);
+  const { nodeId: id, qualifier, equation, actionNodeType, actionId, isDragPlaceholder, isBeingDragged, word } = node.attrs;
 
   // === Main Context ===
   const {
@@ -59,6 +61,8 @@ const ActionNodeView = React.memo(({ node, updateAttributes, editor, selected, g
     hideSuggestionsOnBlur, // Make sure this is available from context
     isNodeInternalUIActive, // Already present from previous step but ensure it's used if needed
     setIsNodeInternalUIActive, // <<< Get setter from context
+    removeAction, // Get from context
+    editorId, // Get from context
   } = useContext(ActionNodeContext);
 
   // === State for UI ===
@@ -79,6 +83,10 @@ const ActionNodeView = React.memo(({ node, updateAttributes, editor, selected, g
   const actionIdButtonRef = useRef(null); // Added for Action ID
   const actionIdListRef = useRef(null); // Added for Action ID
   const wrapperRef = useRef(null); // Ref for the main wrapper
+
+  // --- Find selected labels ---
+  const selectedQualifierLabel = qualifierOptions.find(opt => opt.id === qualifier)?.label || 'Unknown';
+  const selectedActionIdLabel = actionIdOptions.find(opt => opt.id === actionId)?.label || 'Select';
 
   // Prevent clicks from placing a cursor inside the placeholder node
   const handlePlaceholderClick = useCallback((event) => {
@@ -282,38 +290,14 @@ const ActionNodeView = React.memo(({ node, updateAttributes, editor, selected, g
   };
 
   // --- Qualifier Dropdown --- 
-  const toggleQualifierDropdown = useCallback((e) => {
-    e.stopPropagation();
-    if (readOnly) return;
-    
-    const currentlyOpen = openQualifierNodeId === id;
-    if (!currentlyOpen) {
-      setIsNodeInternalUIActive(true); // <<< Set flag when opening
-    } else {
-      setIsNodeInternalUIActive(false); // <<< Reset flag if explicitly closing by toggle
-    }
-
-    // Close other dropdown (Action ID)
-    setOpenActionIdNodeId(null);
-
-    const newOpenState = currentlyOpen ? null : id;
-    setOpenQualifierNodeId(newOpenState);
-
-    // Explicitly hide suggestion menu
-    setSuggestionState(prev => ({ ...prev, visible: false, forceVisible: false, editingNodeId: null }));
-
-    if (editorInstanceRef?.current && !editorInstanceRef.current.isDestroyed) {
-      editorInstanceRef.current.commands.blur();
-    }
-    
-    if (currentlyOpen) {
-        stopInlineEdit(); 
-    }
-
-  }, [readOnly, id, openQualifierNodeId, setOpenQualifierNodeId, setOpenActionIdNodeId, setSuggestionState, editorInstanceRef, stopInlineEdit, setIsNodeInternalUIActive]);
+  const handleQualifierToggle = useCallback(() => {
+    setOpenQualifierNodeId(prev => (prev === id ? null : id));
+    setIsNodeInternalUIActive(true); // Signal that a child UI is active
+  }, [id, setOpenQualifierNodeId, setIsNodeInternalUIActive]);
 
   const handleQualifierSelect = useCallback((value) => {
     updateActionQualifier(id, value);
+    setOpenQualifierNodeId(null);
     setSuggestionState(prev => ({ ...prev, visible: false, forceVisible: false, editingNodeId: null }));
     if (editorInstanceRef?.current && !editorInstanceRef.current.isDestroyed) {
       editorInstanceRef.current.commands.blur();
@@ -324,314 +308,230 @@ const ActionNodeView = React.memo(({ node, updateAttributes, editor, selected, g
   }, [id, updateActionQualifier, setSuggestionState, editorInstanceRef, stopInlineEdit, setIsNodeInternalUIActive]);
 
   // --- Action ID Dropdown --- // Added
-  const toggleActionIdDropdown = useCallback((e) => {
-    e.stopPropagation();
-    if (readOnly) return;
-
-    const currentlyOpen = openActionIdNodeId === id;
-    if (!currentlyOpen) {
-      setIsNodeInternalUIActive(true); // <<< Set flag when opening
-    } else {
-      setIsNodeInternalUIActive(false); // <<< Reset flag if explicitly closing by toggle
-    }
-
-    setOpenQualifierNodeId(null); // Close other dropdown
+  const handleActionIdToggle = useCallback(() => {
     setOpenActionIdNodeId(prev => (prev === id ? null : id));
+    setIsNodeInternalUIActive(true);
+  }, [id, setIsNodeInternalUIActive]);
 
-    // Similar logic for suggestion menu and blur if needed for ActionID dropdown
-    setSuggestionState(prev => ({ ...prev, visible: false, forceVisible: false, editingNodeId: null }));
-    if (editorInstanceRef?.current && !editorInstanceRef.current.isDestroyed) {
-      editorInstanceRef.current.commands.blur();
-    }
-    if (openActionIdNodeId === id && !(newOpenState === id)) { // If closing
-        stopInlineEdit();
-    }
-
-  }, [readOnly, id, openActionIdNodeId, setOpenActionIdNodeId, setOpenQualifierNodeId, setIsNodeInternalUIActive, setSuggestionState, editorInstanceRef, stopInlineEdit]);
-
-  const handleActionIdSelect = useCallback((value) => {
-    updateActionId(id, value);
-    setIsNodeInternalUIActive(false); // <<< Reset flag after selection
-    // Ensure suggestion menu is hidden and editor is blurred, similar to qualifier select
-    setSuggestionState(prev => ({ ...prev, visible: false, forceVisible: false, editingNodeId: null }));
-    if (editorInstanceRef?.current && !editorInstanceRef.current.isDestroyed) {
-      editorInstanceRef.current.commands.blur();
-    }
-    stopInlineEdit();
-  }, [id, updateActionId, setIsNodeInternalUIActive, setSuggestionState, editorInstanceRef, stopInlineEdit]);
-
-
-  // === DND Drag Source Setup ===
-  // Disable drag for the placeholder node itself
-  const [{ isDragging }, dragRef, dragPreview] = useDrag(() => ({
-    type: ItemTypes.ACTION_NODE,
-    item: {
-      id: id,
-      word: word,
-      qualifier: qualifier,
-      equation: equation,
-      actionNodeType: actionNodeType,
-      actionId: actionId
-    },
-    canDrag: !isDragPlaceholder, // Prevent dragging the placeholder
-    // Use drag and end to update Tiptap attribute via context function
-    drag: (item, monitor) => {
-      // Set state only once when drag starts
-      if (monitor.isDragging() && !isBeingDragged) {
-         setNodeDragState(id, true); 
-      }
-    },
-    end: (item, monitor) => {
-      // Always clear state when drag ends
-      setNodeDragState(id, false);
-    },
-    collect: monitor => ({
-      // Still collect isDragging for potential use (e.g., preview), but don't use for hiding
-      isDragging: monitor.isDragging(),
-    })
-  }), [
-      id, word, qualifier, equation, actionNodeType, actionId, 
-      isDragPlaceholder, setNodeDragState, isBeingDragged // Add dependencies
-  ]);
-
-  // Determine if this node should be hidden based on TIPTAP ATTRIBUTE
-  const shouldBeHidden = isBeingDragged;
-
-  // Combine drag refs
-  const connectRefs = (el) => {
-    dragRef(el);
-    wrapperRef.current = el; // Assign to wrapperRef
+  const handleActionIdSelect = (newActionId) => {
+    updateActionId(id, newActionId);
+    setOpenActionIdNodeId(null);
   };
 
-  // Log isDragging state just before applying class
-  // console.log(`[ActionNodeView render ${id}] shouldBeHidden (from attr): ${shouldBeHidden}, isPlaceholder: ${isDragPlaceholder}`);
+  // === DND Drag Source Setup ===
+  const [{ isDragging }, drag, preview] = useDrag({
+    type: ItemTypes.ACTION_NODE,
+    item: (monitor) => {
+      // Announce drag start to the editor component
+      setNodeDragState(id, true);
+      const clientOffset = monitor.getClientOffset();
+      const rect = wrapperRef.current?.getBoundingClientRect();
+      console.log(`[DND] Drag Start`, JSON.stringify({
+        nodeId: id,
+        word: word,
+        sourceEditorId: editorId,
+        mousePosition: clientOffset,
+        nodeBoundaries: rect,
+      }, null, 2));
+      return { id, originalIndex: actionsState.findIndex(a => a.id === id), sourceEditorId: editorId };
+    },
+    end: (item, monitor) => {
+      // Announce drag end
+      setNodeDragState(id, false);
+      const dropResult = monitor.getDropResult();
+      const clientOffset = monitor.getClientOffset();
+      console.log(`[DND] Drag End`, JSON.stringify({
+        nodeId: item.id,
+        sourceEditorId: item.sourceEditorId,
+        targetEditorId: dropResult?.droppedOnEditorId,
+        dropResult: dropResult,
+        mousePosition: clientOffset,
+        didDrop: monitor.didDrop()
+      }, null, 2));
+    },
+    collect: (monitor) => ({
+      isDragging: monitor.isDragging(),
+    }),
+  });
 
-  // === Define labels needed for rendering regular nodes ===
-  // Find label for selected qualifier
-  const selectedQualifierLabel = qualifierOptions.find(opt => opt.id === qualifier)?.label || 'Select';
-  // Find label for selected action ID
-  const selectedActionIdObj = actionIdOptions?.find(opt => opt.id === actionId);
-  let selectedActionIdLabel = 'Select Action';
-  if (selectedActionIdObj) {
-    selectedActionIdLabel = selectedActionIdObj.label;
-  } else if (actionIdOptions && actionIdOptions.length > 0) {
-    selectedActionIdLabel = actionIdOptions[0].label; // Default to first option's label if no match
-    // Optionally, update the state if the current actionId is invalid for the options
-    // useEffect(() => { updateActionId(id, actionIdOptions[0].id); }, []); // Example: Run once on mount
-  }
+  // Attach drag and drop refs to the same node
+  const dndRef = (node) => {
+    wrapperRef.current = node;
+    preview(node); // The whole node is the preview
+    // Note: The drag handle is a separate element inside
+  };
 
-  // === Conditional classes ===
-  const wrapperClasses = cn(
-    'action-node-view',
-    'inline-flex items-center p-1 border rounded-md shadow-sm bg-white mx-0.5 min-h-[36px]',
-    readOnly && 'opacity-80 bg-gray-50',
-    selected && !isDragPlaceholder && 'ring-2 ring-blue-500 outline-none',
-    isBeingDragged && 'opacity-30', // Style for the original node being dragged
-    isDragPlaceholder && 'border-dashed border-blue-500 bg-blue-50 opacity-70', 
-    hasEquationError && 'border-red-500'
-  );
+  const currentColorClass = colorClasses[qualifier] || colorClasses.default;
 
   if (isDragPlaceholder) {
-    // Simplified rendering for placeholder
     return (
-      <NodeViewWrapper
-        ref={wrapperRef} // Keep ref for potential size calculations or other needs
-        className={wrapperClasses}
-        draggable={false} // Placeholder itself should not be draggable again
-        data-node-id={id}
-        onClick={handlePlaceholderClick} // Add the click handler here
-      >
-        <span className="text-sm text-gray-600 px-2">{word}</span>
+      <NodeViewWrapper as="span" className="action-node-view inline-flex items-center rounded-lg px-2 py-1 text-sm bg-blue-100 border-dashed border-2 border-blue-400 mx-1">
+        <span className="text-sm text-blue-600">{word}</span>
       </NodeViewWrapper>
     );
   }
 
-  // Default rendering for actual action nodes
   return (
     <NodeViewWrapper
-       ref={connectRefs} // Use combined ref
-       className={wrapperClasses}
-       draggable={!isDragPlaceholder} 
-       data-drag-handle 
+      ref={dndRef}
+      as="span"
+      className={cn(
+        'action-node-view',
+        'inline-flex items-center rounded-lg px-2 py-1 text-sm transition-shadow border',
+        'mx-1', // Spacing
+        'cursor-default', // Set default cursor for the node
+        currentColorClass,
+        {
+          // State-based styles
+          'opacity-50': isDragging,
+          'ring-2 ring-blue-500 ring-offset-1': selected,
+          'shadow-lg scale-105': isEditing || isEditingEquation,
+          'shadow-red-500/50 shadow-md': hasEquationError,
+        }
+      )}
+      onClick={handlePlaceholderClick}
     >
-      {/* Don't render interactive elements for placeholder */}
-      {isDragPlaceholder ? (
-        <span className="italic px-1">{word}</span> 
-      ) : (
-        <>
-          {/* Optional: Drag Handle (uncomment if needed) */}
-          {/* <GripVertical
-             ref={dragRef} // Attach drag ref here if using handle
-             className="h-4 w-4 mr-1.5 text-gray-400 cursor-grab active:cursor-grabbing"
-             aria-label="Drag action"
-          /> */}
+      <div
+        ref={drag} // Apply drag handle only to the grip icon
+        className="inline-flex items-center justify-center flex-grow"
+        contentEditable={false}
+        draggable="true"
+        onMouseDown={(event) => {
+          const rect = wrapperRef.current?.getBoundingClientRect();
+          console.log(`[DND] Mouse Down`, JSON.stringify({
+            nodeId: id,
+            editorId: editorId,
+            mousePosition: { x: event.clientX, y: event.clientY },
+            nodeBoundaries: rect,
+          }, null, 2));
+        }}
+        data-drag-handle
+      >
+        <GripVertical className="h-5 w-5 cursor-grab text-gray-400 mr-2" />
 
-          {/* --- Qualifier Dropdown --- */}
-          {!readOnly && (
-              <div className="relative inline-block text-left mr-1.5">
+        {/* --- Restored Qualifier Dropdown with Label --- */}
+        {!isEditing && !isEditingEquation && (
+          <div className="relative inline-flex items-center" ref={qualifierButtonRef}>
             <button
-                      ref={qualifierButtonRef}
-              onClick={toggleQualifierDropdown}
-                      className={cn(
-                          "inline-flex justify-center items-center w-full rounded-md border border-gray-300 shadow-sm px-1.5 py-0.5 bg-white text-xs font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-1 focus:ring-offset-1 focus:ring-indigo-500",
-                          isQualifierDropdownOpen && 'ring-2 ring-indigo-500'
-                      )}
+              onClick={handleQualifierToggle}
+                className="flex items-center justify-center p-1 rounded-md hover:bg-gray-200/50"
               aria-haspopup="true"
-                      aria-expanded={isQualifierDropdownOpen}
+              aria-expanded={isQualifierDropdownOpen}
             >
-                      {qualifierIconMap[qualifier] && (
-                          <img src={qualifierIconMap[qualifier]} alt={selectedQualifierLabel} className="w-3 h-3 mr-1.5" style={{ pointerEvents: 'none' }} />
-                      )}
-                      <span style={{ userSelect: 'none', pointerEvents: 'none' }}>{selectedQualifierLabel}</span>
-                      <ChevronDown className="-mr-0.5 ml-1 h-3 w-3" aria-hidden="true" style={{ pointerEvents: 'none' }} />
+              <img src={qualifierIconMap[qualifier] || incomingIcon} alt={selectedQualifierLabel} className="w-4 h-4" />
+                <span className="ml-1 font-medium">{selectedQualifierLabel}</span>
             </button>
-                {isQualifierDropdownOpen && (
-                    <div
-                       ref={qualifierListRef}
-                       className={cn("origin-top-right absolute right-0 mt-1 w-36 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 focus:outline-none z-10")}
-                       role="menu"
-                       aria-orientation="vertical"
-                       aria-labelledby="options-menu"
-                    >
-                        <div className="py-1" role="none">
-                            {qualifierOptions.map((option) => (
-                  <button
-                                    key={option.id}
-                                    onClick={(e) => { e.stopPropagation(); handleQualifierSelect(option.id); }}
-                                    className={cn(
-                                        "flex items-center w-full text-left px-3 py-1 text-xs",
-                                        qualifier === option.id ? 'bg-gray-100 text-gray-900' : 'text-gray-700',
-                                        'hover:bg-gray-100 hover:text-gray-900'
-                                    )}
-                                    role="menuitem"
-                                >
-                                    {qualifierIconMap[option.id] && (
-                                        <img src={qualifierIconMap[option.id]} alt={option.label} className="w-3 h-3 mr-2" />
-                                    )}
-                                    {option.label}
-                  </button>
-              ))}
-                        </div>
-                    </div>
+            {isQualifierDropdownOpen && (
+              <div
+                ref={qualifierListRef}
+                className="absolute z-10 w-32 py-1 mt-1 bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5"
+                style={{ top: '100%', left: 0 }}
+              >
+                {qualifierOptions.map(option => (
+                       <a key={option.id} href="#" 
+                          onMouseDown={(e) => { e.preventDefault(); handleQualifierSelect(option.id); }}
+                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                  >
+                    {option.label}
+                  </a>
+                ))}
+              </div>
             )}
           </div>
-          )}
-          {readOnly && <span className="text-xs mr-1.5 px-1.5 py-0.5 text-gray-600">{selectedQualifierLabel}:</span>}
+        )}
 
-          {/* --- Name Section --- */}
-          <div className="flex items-center flex-grow min-w-0" onDoubleClick={handleDoubleClick}>
-              {!isEditing ? (
-                  <span
-                      className={cn(
-                          "flex-grow px-1 truncate",
-                          readOnly ? 'cursor-default' : 'cursor-text'
-                      )}
-                  >
-                    {word}
-                  </span>
-              ) : (
-                <input
-                    ref={inputRef}
-                      type="text"
-                      defaultValue={word || ''}
-                      onChange={handleNameChange}
-                      onKeyDown={handleNameKeyDown}
-                      onBlur={handleNameBlur}
-                      className={cn("flex-grow px-1 bg-white border border-blue-400 rounded outline-none focus:ring-1 focus:ring-blue-500")}
-                      autoFocus
-                  />
-              )}
-          </div>
-
-          {/* --- Equation Section --- */}
-          <div className="flex items-center ml-1.5 border-l border-gray-300 pl-1.5">
-              {!isEditingEquation ? (
-                  <span
-                      onClick={handleEquationClick}
-                      className={cn(
-                        "text-xs text-gray-600 px-1 min-w-[20px] text-center",
-                        readOnly ? 'cursor-default' : 'cursor-pointer hover:bg-gray-200 rounded',
-                        hasEquationError && 'text-red-600 font-semibold'
-                      )}
-                  >
-                      {localEquation || '-'}
-            </span>
+        {/* Word/Name (Display or Edit) */}
+        {!isDragPlaceholder && (
+          isEditing ? (
+            <input
+              ref={inputRef}
+              type="text"
+              defaultValue={word}
+              onChange={handleNameChange}
+              onKeyDown={handleNameKeyDown}
+              onBlur={handleNameBlur}
+              className="mx-1 text-sm bg-white border border-blue-400 rounded-md shadow-inner focus:outline-none"
+              style={{ minWidth: '50px', flexShrink: 1 }}
+              size={word.length || 10}
+            />
           ) : (
-                <input
-                    ref={equationInputRef}
-                    type="text"
-                    value={localEquation}
-                      onChange={handleEquationChange}
-                      onKeyDown={handleEquationKeyDown}
-                      onBlur={handleEquationBlur}
-                    className={cn(
-                          "w-16 px-1 text-xs bg-white border border-blue-400 rounded outline-none focus:ring-1 focus:ring-blue-500",
-                          hasEquationError && 'border-red-500'
-                      )}
-                      autoFocus
-                  />
-              )}
-          </div>
+            <span
+              onDoubleClick={handleDoubleClick}
+              className="mx-1 text-sm text-gray-800 cursor-pointer"
+            >
+              {word}
+            </span>
+          )
+        )}
+        
+        {/* Separator */}
+        {!isDragPlaceholder && <div className="h-4 mx-1 border-l border-gray-300"></div>}
 
-            {/* --- Action ID Dropdown --- */}
-           {!readOnly && (
-               <div className="relative inline-block text-left ml-1.5 border-l border-gray-300 pl-1.5">
-                   <button
-                       ref={actionIdButtonRef}
-                       onClick={toggleActionIdDropdown}
-                       className={cn(
-                          "inline-flex justify-center items-center w-full rounded-md border border-gray-300 shadow-sm px-1.5 py-0.5 bg-white text-xs font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-1 focus:ring-offset-1 focus:ring-indigo-500",
-                          isActionIdDropdownOpen && 'ring-2 ring-indigo-500'
-                       )}
-                aria-haspopup="true"
-                       aria-expanded={isActionIdDropdownOpen}
-             >
-                       {selectedActionIdLabel}
-                       <ChevronDown className="-mr-0.5 ml-1 h-3 w-3" aria-hidden="true" />
-             </button>
-                   {isActionIdDropdownOpen && (
-                       <div
-                          ref={actionIdListRef}
-                          className={cn("origin-top-right absolute right-0 mt-1 w-36 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 focus:outline-none z-10")}
-                          role="menu"
-                          aria-orientation="vertical"
-                       >
-                           <div className="py-1" role="none">
-                               {actionIdOptions?.map((option) => (
+        {/* Equation (Display or Edit) */}
+        {!isDragPlaceholder && (
+          isEditingEquation ? (
+            <input
+              ref={equationInputRef}
+              type="text"
+              value={localEquation}
+              onChange={handleEquationChange}
+              onKeyDown={handleEquationKeyDown}
+              onBlur={handleEquationBlur}
+              className={cn(
+                'text-sm bg-white border rounded-md shadow-inner focus:outline-none',
+                hasEquationError ? 'border-red-500' : 'border-blue-400'
+              )}
+              style={{ minWidth: '40px' }}
+              size={localEquation.length || 3}
+            />
+          ) : (
+            <span
+              onClick={handleEquationClick}
+              className="text-sm text-gray-600 cursor-pointer hover:text-blue-600"
+            >
+              {equation || '...'}
+            </span>
+          )
+        )}
+
+        {/* ActionId Dropdown */}
+        {!isDragPlaceholder && !isEditing && !isEditingEquation && (
+           <div className="relative inline-flex items-center ml-1" ref={actionIdButtonRef}>
               <button
-                                   key={option.id}
-                                   onClick={(e) => { e.stopPropagation(); handleActionIdSelect(option.id); }}
-                                   className={cn(
-                                      "block w-full text-left px-3 py-1 text-xs",
-                                      actionId === option.id ? 'bg-gray-100 text-gray-900' : 'text-gray-700',
-                                      'hover:bg-gray-100 hover:text-gray-900'
-                                   )}
-                                   role="menuitem"
+                onClick={handleActionIdToggle}
+                className="flex items-center px-1 py-0.5 text-xs text-gray-600 bg-gray-200 rounded-md hover:bg-gray-300"
               >
-                 {option.label}
-               </button>
-           ))}
-                           </div>
-                       </div>
+                <span>{selectedActionIdLabel}</span>
+                <ChevronDown size={14} className="ml-1" />
+              </button>
+              {isActionIdDropdownOpen && (
+                 <div
+                    ref={actionIdListRef}
+                    className="absolute z-10 w-32 py-1 mt-1 bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5"
+                    style={{ top: '100%', right: 0 }}
+                 >
+                    {actionIdOptions.map(option => (
+                       <a key={option.id} href="#" onClick={(e) => { e.preventDefault(); handleActionIdSelect(option.id); }}
+                          className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                       >
+                          {option.label}
+                       </a>
+                    ))}
+                 </div>
               )}
-            </div>
-          )}
-           {readOnly && <span className="text-xs ml-1.5 pl-1.5 border-l border-gray-300 px-1 py-0.5 text-gray-600">{selectedActionIdLabel}</span>}
-
-
-          {/* --- Delete Button --- */}
-          {!readOnly && (
+           </div>
+        )}
+        
+        {/* Delete Button */}
+        {!isDragPlaceholder && (
           <button
-                  onClick={(e) => { e.stopPropagation(); deleteNode(); }}
-                  className="ml-1.5 p-0.5 rounded hover:bg-red-100 text-gray-400 hover:text-red-600 focus:outline-none focus:ring-1 focus:ring-red-500"
-                  aria-label="Delete action"
-            title="Delete action"
+            onClick={() => removeAction(id)}
+            className="ml-1.5 p-0.5 rounded-full hover:bg-red-100 text-gray-500 hover:text-red-600"
           >
-                  <X size={14} />
+            <X size={14} />
           </button>
-          )}
-        </>
-      )}
+        )}
+      </div>
     </NodeViewWrapper>
   );
 }); // End React.memo wrapper

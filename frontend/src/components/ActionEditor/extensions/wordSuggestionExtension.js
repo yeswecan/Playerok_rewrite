@@ -125,8 +125,10 @@ const WordSuggestionExtension = Extension.create({
                             if (currentPos >= startPos) {
                                 next.range = { from: startPos, to: currentPos };
                                 next.query = newState.doc.textBetween(startPos, currentPos, '\0');
-                                if (next.query) {
+                                if (next.query && next.query.trim() !== '') {
                                     next.active = true;
+                                } else {
+                                    next.active = false;
                                 }
                             }
                         }
@@ -164,11 +166,18 @@ const WordSuggestionExtension = Extension.create({
   },
 
   onFocus({ editor }) {
-    this.options.showSuggestionsOnFocus();
+    // DO NOTHING HERE.
+    // The suggestion visibility should be controlled by the plugin state ('apply' function)
+    // based on the current query and selection, not just on focus events.
+    // This prevents the suggestion menu from appearing inappropriately,
+    // such as when a node is dragged and dropped.
   },
 
   onUpdate({ editor }) {
-    this.options.requestStateUpdate('update');
+    const pluginState = this.storage.key.getState(editor.state);
+    if (pluginState) {
+      this.options.requestStateUpdate(pluginState.query);
+    }
     this.options.requestCoordUpdate();
   },
 
@@ -215,7 +224,10 @@ const WordSuggestionExtension = Extension.create({
   },
 
   onSelectionUpdate({ editor }) {
-    this.options.requestStateUpdate('selection');
+    const pluginState = this.storage.key.getState(editor.state);
+    if (pluginState) {
+      this.options.requestStateUpdate(pluginState.query);
+    }
     this.options.requestCoordUpdate();
   },
 

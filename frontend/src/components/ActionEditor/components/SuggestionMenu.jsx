@@ -1,8 +1,8 @@
-import React, { useRef, useEffect, useLayoutEffect, useState, useContext } from 'react';
+import React, { useRef, useEffect, useLayoutEffect, useState, useContext, forwardRef } from 'react';
 import ActionNodeContext from '../context/ActionNodeContext'; // RENAMED
 
-const SuggestionMenu = ({ items = [], highlightedIndices = [], selectedIndex, onSelect, query }) => {
-    const listRef = useRef(null);
+const SuggestionMenu = forwardRef(({ items = [], highlightedIndices = [], selectedIndex, onSelect, query }, ref) => {
+    const listRef = ref || useRef(null);
     const [hasHighlighted, setHasHighlighted] = useState(false);
     const { showHint, hideHint } = useContext(ActionNodeContext); // RENAMED
 
@@ -89,6 +89,8 @@ const SuggestionMenu = ({ items = [], highlightedIndices = [], selectedIndex, on
             })}
         </div>
     );
-};
+});
+
+SuggestionMenu.displayName = 'SuggestionMenu'; // Add display name for DevTools
 
 export default SuggestionMenu;

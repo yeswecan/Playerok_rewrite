@@ -12,6 +12,11 @@
     "lucide-react": "^0.487.0",
     "react-beautiful-dnd": "^13.1.1",
     "styled-components": "^6.1.14",
-    "tippy.js": "^6.3.7"
+    "tippy.js": "^6.3.7",
+    "zustand": "^5.0.6"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.53.2",
+    "@types/node": "^24.0.10"
   }
 }

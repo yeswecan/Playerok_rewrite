@@ -1,0 +1,13 @@
+.action-editor-wrapper {
+  /* ... existing styles ... */
+  display: flex; /* Add flex display to the wrapper */
+}
+
+.action-editor-wrapper .ProseMirror {
+  width: 100%;
+  outline: none;
+  min-height: inherit; /* Inherit min-height from wrapper */
+  flex-grow: 1; /* Allow it to grow and fill space */
+}
+
+/* ... other styles ... */ 

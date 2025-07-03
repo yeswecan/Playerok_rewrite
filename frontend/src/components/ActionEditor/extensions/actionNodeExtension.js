@@ -10,11 +10,16 @@ const ActionNode = Node.create({
   selectable: true,
   draggable: false,
   atom: true,
-  content: 'inline*',
-  code: true,
 
   addAttributes() {
     return {
+      word: {
+        default: 'action',
+        parseHTML: element => element.getAttribute('data-word'),
+        renderHTML: attributes => ({
+          'data-word': attributes.word,
+        }),
+      },
       qualifier: {
         default: null, // Will be set from props
       },
@@ -78,8 +83,10 @@ const ActionNode = Node.create({
           const equation = domNode.getAttribute('data-equation') || '=1';
           const actionNodeType = domNode.getAttribute('data-node-type');
           const actionId = domNode.getAttribute('data-action-id');
+          const word = domNode.getAttribute('data-word');
           if (!id || !qualifier) return false;
           return {
+            word,
             qualifier,
             nodeId: id,
             equation,
@@ -95,6 +102,7 @@ const ActionNode = Node.create({
   renderHTML({ HTMLAttributes, node }) {
      const mergedAttrs = mergeAttributes(HTMLAttributes, {
        'data-type': 'action-node',
+       'data-word': node.attrs.word,
        'data-node-id': node.attrs.nodeId,
        'data-qualifier': node.attrs.qualifier,
        'data-equation': node.attrs.equation,

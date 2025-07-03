@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useContext } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Modal from '../components/test_Modal';
 import DraggableList from '../components/DraggableList';
@@ -9,6 +9,8 @@ import { ChevronLeft, Plus, Settings } from 'lucide-react';
 // --- DND Imports ---
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
+import { SelectionProvider, SelectionContext } from '../context/SelectionContext';
+import SelectionHighlighter from '../components/ui/SelectionHighlighter';
 
 // --- Mock Data for Action Editor ---
 const MOCK_HIGHLIGHT_DICTIONARY = {
@@ -480,42 +482,23 @@ const PlaylistEditorPage = () => {
     }
   };
 
-  if (isLoading) return (
-    <div className="max-w-6xl mx-auto p-6">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold">Loading playlist...</h1>
-        <button
-          onClick={() => navigate('/')}
-          className="px-4 py-2 text-gray-600 hover:text-gray-800"
-        >
-          Back to Playlists
-        </button>
-      </div>
-    </div>
-  );
+  const PageWrapper = () => {
+    const { clearSelection } = useContext(SelectionContext);
 
-  if (error) return (
-    <div className="max-w-6xl mx-auto p-6">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold">Error</h1>
-        <button
-          onClick={() => navigate('/')}
-          className="px-4 py-2 text-gray-600 hover:text-gray-800"
-        >
-          Back to Playlists
-        </button>
-      </div>
-      <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
-        {error}
-      </div>
-    </div>
-  );
-
-  const { looped, actionable } = transformItems(playlist.items);
+    const handlePageClick = (e) => {
+      // If the click happened outside of any component that should maintain selection
+      // (i.e., not within an editor), clear the global selection.
+      if (!e.target.closest('.action-editor-wrapper')) {
+        console.log('[PlaylistEditorPage] Clicked outside all editors. Clearing selection.');
+        clearSelection();
+      }
+    };
 
   return (
+      <div className="p-4 bg-gray-50 min-h-screen" onClick={handlePageClick}>
+        <SelectionHighlighter />
+        <div className="max-w-7xl mx-auto">
     <div className="container mx-auto p-4">
-      <DndProvider backend={HTML5Backend}>
         <div className="flex justify-between items-center mb-4">
           <button
             onClick={() => navigate('/')}
@@ -595,8 +578,9 @@ const PlaylistEditorPage = () => {
             setTrackToDelete(track);
             setShowDeleteConfirmation(true);
           }}
+              onSave={handleSavePlaylistActions}
         />
-      </DndProvider>
+          </div>
 
       <Modal
         isOpen={isTrackModalOpen}
@@ -903,7 +887,50 @@ const PlaylistEditorPage = () => {
           ))}
         </div>
       </Modal>
+        </div>
     </div>
+    );
+  };
+
+  if (isLoading) return (
+    <div className="max-w-6xl mx-auto p-6">
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-3xl font-bold">Loading playlist...</h1>
+        <button
+          onClick={() => navigate('/')}
+          className="px-4 py-2 text-gray-600 hover:text-gray-800"
+        >
+          Back to Playlists
+        </button>
+      </div>
+    </div>
+  );
+
+  if (error) return (
+    <div className="max-w-6xl mx-auto p-6">
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-3xl font-bold">Error</h1>
+        <button
+          onClick={() => navigate('/')}
+          className="px-4 py-2 text-gray-600 hover:text-gray-800"
+        >
+          Back to Playlists
+        </button>
+      </div>
+      <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+        {error}
+      </div>
+    </div>
+  );
+
+  const { looped, actionable } = transformItems(playlist.items);
+
+  return (
+    <DndProvider backend={HTML5Backend}>
+      <SelectionProvider>
+        <PageWrapper />
+      </SelectionProvider>
+    </DndProvider>
   );
 };
 

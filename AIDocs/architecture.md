@@ -1,32 +1,49 @@
 # Architecture: `src/components/ActionEditor`
 
+This document outlines the hook-centric architecture of the Action Editor. The logic is decoupled into specific, reusable hooks, with the main component acting as an orchestrator.
+
 ```
 src/components/ActionEditor/
-├── index.jsx
-│   Re‑exports the main `ActionEditorComponent`.
+│
 ├── ActionEditorComponent.jsx
-│   Orchestrates TipTap setup, HintContext provider, extensions, and renders the editor wrapper.
-├── context/
-│   └── HintContext.jsx
-│       React context for exposing hint tooltip controls and action‑update callbacks.
+│   Orchestrates all hooks, manages top-level UI state (e.g., dropdown visibility), and provides the ActionNodeContext.
+│
 ├── components/
 │   ├── ActionNodeView.jsx
-│   │   React NodeView rendering each action: word + equation + qualifier + delete.
-│   └── SuggestionMenu.jsx
-│       Renders the suggestion dropdown (items, highlights, selection handlers).
+│   │   The React component that renders each `actionNode`. Handles local UI interactions like inline editing and dropdowns.
+│   ├── SuggestionMenu.jsx
+│   │   Renders the suggestion list popup.
+│   ├── TipTapEditorComponent.jsx
+│   │   A wrapper component that contains the Tiptap `EditorContent`.
+│   └── HintTooltip.jsx
+│       Renders a tooltip for hints (e.g., equation errors).
+│
+├── context/
+│   └── ActionNodeContext.jsx
+│       React context for providing all necessary data (e.g., `qualifierOptions`) and callbacks from the main component down to the `ActionNodeView`.
+│
 ├── extensions/
 │   ├── actionNodeExtension.js
-│   │   Defines the Tiptap `ActionNode` schema and NodeViewRenderer integration.
+│   │   Defines the Tiptap `ActionNode` schema, attributes, and its link to the `ActionNodeView` React component.
 │   └── wordSuggestionExtension.js
-│       Defines the Tiptap suggestion plugin (query logic, key handlers).
+│       Tiptap extension that manages suggestion logic, keyboard shortcuts (Space, Enter), and focus/blur events to trigger actions.
+│
 ├── hooks/
-│   ├── useActionsStateSync.js
-│   │   Custom hook synchronizing React `actionsState` ↔ Tiptap document content.
-│   └── useSuggestionPosition.js
-│       Hook to calculate and request updates for suggestion/hint coordinates.
+│   ├── useActionManagement.js
+│   │   **Core State Hook.** The single source of truth for action data. Manages the `actionsState` array and exposes functions like `addAction`, `removeAction`, `reorderActions`, and `updateAction...`.
+│   │
+│   ├── useActionNodeDnd.js
+│   │   Manages all `react-dnd` drag-and-drop logic for action nodes, including inter-editor drops and intra-editor reordering.
+│   │
+│   ├── useSuggestionManagement.js
+│   │   Manages the state and behavior of the suggestion menu, including its visibility, item filtering, and selection handling.
+│   │
+│   └── useTiptapSync.js
+│       Synchronizes the React `actionsState` with the Tiptap editor. It renders the React state to Tiptap and analytically detects deletions in Tiptap to sync them back.
+│
 └── utils/
     ├── filterSuggestions.js
-    │   Pure helper to filter `registeredActions` by substring match.
-    └── calculateCoords.js
-        Helpers for on‑screen positioning of menus and tooltips.
+    │   Helper function to filter suggestion items based on a query.
+    └── ... (other helpers)
+
 ``` 

@@ -336,24 +336,11 @@ const DraggableList = ({ items, onItemMove, onItemLoopToggle, onItemClick, onIte
                               initialActions={item.actions || []}
                               registeredActions={registeredActions}
                               qualifierOptions={qualifierOptions}
-                              defaultQualifier="outgoing"
-                              onActionCreated={(id, word, qualifier) => {
-                                const newActions = [...(item.actions||[]), { id, word, qualifier }];
+                              nodeType="ItemActionNode"
+                              onActionsChanged={(newActions) => {
+                                console.log(`[DraggableList] Actions changed for item ${item.originalIndex}`, newActions);
                                 onItemActionsUpdate(item.originalIndex, { actions: newActions });
                               }}
-                              onActionDeleted={(nid) => {
-                                const newActions = (item.actions||[]).filter(a => a.id !== nid);
-                                onItemActionsUpdate(item.originalIndex, { actions: newActions });
-                              }}
-                              onQualifierChanged={(nid, q) => {
-                                const newActions = (item.actions||[]).map(a => a.id === nid ? { ...a, qualifier: q } : a);
-                                onItemActionsUpdate(item.originalIndex, { actions: newActions });
-                              }}
-                              onActionWordChanged={(nid, w) => {
-                                const newActions = (item.actions||[]).map(a => a.id === nid ? { ...a, word: w } : a);
-                                onItemActionsUpdate(item.originalIndex, { actions: newActions });
-                              }}
-                              readOnly={false}
                             />
                           </div>
                         </li>
@@ -445,24 +432,11 @@ const DraggableList = ({ items, onItemMove, onItemLoopToggle, onItemClick, onIte
                               initialActions={item.actions || []}
                               registeredActions={registeredActions}
                               qualifierOptions={qualifierOptions}
-                              defaultQualifier="outgoing"
-                              onActionCreated={(id, word, qualifier) => {
-                                const newActions = [...(item.actions||[]), { id, word, qualifier }];
+                              nodeType="ItemActionNode"
+                              onActionsChanged={(newActions) => {
+                                console.log(`[DraggableList] Actions changed for item ${item.originalIndex}`, newActions);
                                 onItemActionsUpdate(item.originalIndex, { actions: newActions });
                               }}
-                              onActionDeleted={(nid) => {
-                                const newActions = (item.actions||[]).filter(a => a.id !== nid);
-                                onItemActionsUpdate(item.originalIndex, { actions: newActions });
-                              }}
-                              onQualifierChanged={(nid, q) => {
-                                const newActions = (item.actions||[]).map(a => a.id === nid ? { ...a, qualifier: q } : a);
-                                onItemActionsUpdate(item.originalIndex, { actions: newActions });
-                              }}
-                              onActionWordChanged={(nid, w) => {
-                                const newActions = (item.actions||[]).map(a => a.id === nid ? { ...a, word: w } : a);
-                                onItemActionsUpdate(item.originalIndex, { actions: newActions });
-                              }}
-                              readOnly={false}
                             />
                           </div>
                         </li>

@@ -7,11 +7,15 @@ const Playlist = require('./models/test_Playlist');
 // Add ffmpeg for thumbnail generation
 const ffmpegPath = require('ffmpeg-static');
 const ffmpeg = require('fluent-ffmpeg');
+// Add ffprobe-static
+const ffprobePath = require('ffprobe-static').path;
 const WebSocket = require('ws');
 const MqttWorker = require('./mqtt_worker');
 const mqttWorker = new MqttWorker();
 mqttWorker.start();
 ffmpeg.setFfmpegPath(ffmpegPath);
+// Set ffprobe path
+ffmpeg.setFfprobePath(ffprobePath);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -52,7 +56,8 @@ app.use((req, res, next) => {
 
 // CORS configuration
 app.use(cors({
-    origin: ['http://localhost:5173', 'http://192.168.1.5:5173'],
+    origin: ['http://localhost:5173', 'http://192.168.1.5:5173', 'http://176.99.133.223:5173'], 
+    // // The third is a temporary IP address for the web deploy in April
     methods: ['GET', 'POST', 'DELETE', 'OPTIONS', 'PATCH', 'PUT'],
     allowedHeaders: ['Content-Type'],
     credentials: true
@@ -508,7 +513,7 @@ async function start() {
         await generatePreviews();
         const server = app.listen(PORT, () => {
             console.log(`Server running on port ${PORT}`);
-            console.log('CORS enabled for:', ['http://localhost:5173', 'http://192.168.1.5:5173']);
+            console.log('CORS enabled for:', ['http://localhost:5173', 'http://192.168.1.5:5173', 'http://176.99.133.223:5173']);
         });
         // WebSocket server
         const wss = new WebSocket.Server({ server });

@@ -41,11 +41,6 @@
     background-color: #fef9c3 !important; /* Tailwind yellow-100 */
     font-weight: 600 !important; /* Tailwind font-semibold */
   }
-
-  /* Add this rule for ActionNode selection */
-  .ProseMirror-selectednode .action-node-view {
-    @apply ring-2 ring-blue-500;
-  }
 }
 
 /* Commented out rule - was moved inside @layer components */

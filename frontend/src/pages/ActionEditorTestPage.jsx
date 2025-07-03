@@ -1,9 +1,10 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useContext } from 'react';
 // import { ActionEditorComponent } from '../components/ActionEditor'; // Assuming index export was incorrect
 import ActionEditorComponent from '../components/ActionEditor/ActionEditorComponent.jsx'; // Direct import
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
-// import './ActionEditorTestPage.css'; // Removed import as file doesn't exist
+// import { SelectionProvider, SelectionContext } from '../context/SelectionContext'; // This context is no longer used here.
+// import SelectionHighlighter from '../components/ui/SelectionHighlighter'; // This component is no longer used here.
 
 // Example dictionary - in real app this would come from your backend/config
 const HIGHLIGHT_DICTIONARY = {
@@ -104,15 +105,37 @@ const initialActions3 = [
 const ActionEditorTestPage = () => {
   const [actionsState1, setActionsState1] = useState(initialActions1);
   const [actionsState2, setActionsState2] = useState(initialActions2);
-  const [actionsState3, setActionsState3] = useState(initialActions3); // State for Editor 3
+  const [actionsState3, setActionsState3] = useState(initialActions3);
+
+  // Lifted state for global selection
+  const [globallySelectedNode, setGloballySelectedNode] = useState(null);
+
+  // Phase 1: Global focus state
+  const [focusedEditor, setFocusedEditor] = useState(null);
+
+  // Phase 2: Debug state
+  const [editorsDebugState, setEditorsDebugState] = useState({
+    editor1: { text: '', suggestionOpen: false, suggestionQuery: '' },
+    editor2: { text: '', suggestionOpen: false, suggestionQuery: '' },
+    editor3: { text: '', suggestionOpen: false, suggestionQuery: '' },
+  });
+
+  const handleEditorStateChange = useCallback((editorId, newState) => {
+    setEditorsDebugState(prev => ({
+      ...prev,
+      [editorId]: { ...prev[editorId], ...newState },
+    }));
+  }, []);
 
   // --- Callbacks for Editor 1 --- //
   const handleActionCreated1 = useCallback((action) => {
     console.log('Action created in Editor 1:', action);
+    setActionsState1(prev => [...prev, action]);
   }, []);
 
   const handleActionDeleted1 = useCallback((actionId) => {
     console.log('Action deleted in Editor 1:', actionId);
+    setActionsState1(prev => prev.filter(a => a.id !== actionId));
   }, []);
 
   const handleActionWordChanged1 = useCallback((actionId, newWord) => {
@@ -130,10 +153,12 @@ const ActionEditorTestPage = () => {
   // --- Callbacks for Editor 2 --- //
   const handleActionCreated2 = useCallback((action) => {
     console.log('Action created in Editor 2:', action);
+    setActionsState2(prev => [...prev, action]);
   }, []);
 
   const handleActionDeleted2 = useCallback((actionId) => {
     console.log('Action deleted in Editor 2:', actionId);
+    setActionsState2(prev => prev.filter(a => a.id !== actionId));
   }, []);
 
   const handleActionWordChanged2 = useCallback((actionId, newWord) => {
@@ -151,10 +176,12 @@ const ActionEditorTestPage = () => {
   // --- Callbacks for Editor 3 --- //
   const handleActionCreated3 = useCallback((action) => {
     console.log('Action created in Editor 3:', action);
+    setActionsState3(prev => [...prev, action]);
   }, []);
 
   const handleActionDeleted3 = useCallback((actionId) => {
     console.log('Action deleted in Editor 3:', actionId);
+    setActionsState3(prev => prev.filter(a => a.id !== actionId));
   }, []);
 
   const handleActionWordChanged3 = useCallback((actionId, newWord) => {
@@ -243,89 +270,119 @@ const ActionEditorTestPage = () => {
   };
 
   const removeExternalAction = () => {
-    setActionsState1(prev => prev.slice(1)); // Remove the first element
-    console.log('Removed first action from Editor 1');
+    if (actionsState1.length > 0) {
+      setActionsState1(prev => prev.slice(0, -1));
+      console.log('Removed last action from Editor 1');
+    }
   };
 
   return (
     <DndProvider backend={HTML5Backend}>
-      <div className="action-editor-test-page" style={{ padding: '20px', fontFamily: 'sans-serif' }}>
+      <div style={{ padding: '20px', fontFamily: 'sans-serif' }}>
         <h1>Action Editor Test Page</h1>
 
-        <div className="editor-section" style={{ marginBottom: '30px', border: '1px solid #eee', padding: '15px' }}>
-          <h2>Editor 1 (Item Actions - `ItemActionNode`)</h2>
-          <div className="editor-container" style={{ marginBottom: '10px' }}>
+        <div style={{ marginBottom: '20px', display: 'flex', gap: '10px' }}>
+          <button onClick={addExternalAction}>Add Action to Editor 1</button>
+          <button onClick={removeExternalAction}>Remove Action from Editor 1</button>
+           <button
+            onClick={() => setFocusedEditor(null)}
+            style={{ padding: '10px', backgroundColor: '#f0f0f0' }}
+          >
+            Deselect / Blur All Editors
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', alignItems: 'stretch' }}>
+
+          {/* Editor Instance 1 */}
+          <div style={{ border: '2px solid #ccc', padding: '10px', borderRadius: '8px', backgroundColor: '#f9f9f9' }}>
+            <h2>Editor 1 (Item Actions)</h2>
             <ActionEditorComponent
-              key="editor1"
               editorId="editor1"
               initialActions={actionsState1}
               registeredActions={initialRegisteredActions}
               qualifierOptions={qualifierOptions}
-              nodeType="ItemActionNode"
               onActionCreated={handleActionCreated1}
               onActionDeleted={handleActionDeleted1}
               onActionWordChanged={handleActionWordChanged1}
               onActionQualifierChanged={handleActionQualifierChanged1}
               onActionEquationChanged={handleActionEquationChanged1}
               onActionDrop={handleActionDrop}
-              placeholderText="Add item action..."
+              isFocused={focusedEditor === 'editor1'}
+              onFocus={() => setFocusedEditor('editor1')}
+              onStateChange={handleEditorStateChange}
+              editorType="ItemActionEditor"
+              globallySelectedNode={globallySelectedNode}
+              onNodeSelected={setGloballySelectedNode}
             />
           </div>
-          <pre className="state-display" style={{ background: '#f0f0f0', padding: '10px', fontSize: '0.8em', whiteSpace: 'pre-wrap' }}>
-            {JSON.stringify(actionsState1, null, 2)}
-          </pre>
-          <button onClick={addExternalAction} style={{ marginRight: '5px' }}>Add Action to Editor 1</button>
-          <button onClick={removeExternalAction}>Remove First from Editor 1</button>
-        </div>
 
-        <div className="editor-section" style={{ marginBottom: '30px', border: '1px solid #eee', padding: '15px' }}>
-          <h2>Editor 3 (Item Actions - `ItemActionNode`)</h2>
-          <div className="editor-container" style={{ marginBottom: '10px' }}>
+          {/* Editor Instance 2 */}
+          <div style={{ border: '2px solid #ccc', padding: '10px', borderRadius: '8px', backgroundColor: '#f9f9f9' }}>
+            <h2>Editor 2 (Playlist Actions)</h2>
             <ActionEditorComponent
-              key="editor3"
-              editorId="editor3"
-              initialActions={actionsState3}
-              registeredActions={initialRegisteredActions}
-              qualifierOptions={qualifierOptions}
-              nodeType="ItemActionNode" // Same type as Editor 1
-              onActionCreated={handleActionCreated3}
-              onActionDeleted={handleActionDeleted3}
-              onActionWordChanged={handleActionWordChanged3}
-              onActionQualifierChanged={handleActionQualifierChanged3}
-              onActionEquationChanged={handleActionEquationChanged3}
-              onActionDrop={handleActionDrop}
-              placeholderText="Add another item action..."
-            />
-          </div>
-          <pre className="state-display" style={{ background: '#f0f0f0', padding: '10px', fontSize: '0.8em', whiteSpace: 'pre-wrap' }}>
-            {JSON.stringify(actionsState3, null, 2)}
-          </pre>
-        </div>
-
-        <div className="editor-section" style={{ marginBottom: '30px', border: '1px solid #eee', padding: '15px' }}>
-          <h2>Editor 2 (Playlist Actions - `PlaylistActionNode`)</h2>
-          <div className="editor-container" style={{ marginBottom: '10px' }}>
-            <ActionEditorComponent
-              key="editor2"
               editorId="editor2"
               initialActions={actionsState2}
-              registeredActions={initialRegisteredActions}
+              registeredActions={initialRegisteredActions} // Using same dictionary for now
               qualifierOptions={qualifierOptions}
-              nodeType="PlaylistActionNode"
               onActionCreated={handleActionCreated2}
               onActionDeleted={handleActionDeleted2}
               onActionWordChanged={handleActionWordChanged2}
               onActionQualifierChanged={handleActionQualifierChanged2}
               onActionEquationChanged={handleActionEquationChanged2}
               onActionDrop={handleActionDrop}
-              placeholderText="Add playlist action..."
+              isFocused={focusedEditor === 'editor2'}
+              onFocus={() => setFocusedEditor('editor2')}
+              onStateChange={handleEditorStateChange}
+              editorType="PlaylistActionEditor"
+              globallySelectedNode={globallySelectedNode}
+              onNodeSelected={setGloballySelectedNode}
             />
           </div>
+
+          {/* Editor Instance 3 */}
+          <div style={{ border: '2px solid #ccc', padding: '10px', borderRadius: '8px', backgroundColor: '#f9f9f9' }}>
+            <h2>Editor 3 (Another Item Editor)</h2>
+            <ActionEditorComponent
+              editorId="editor3"
+              initialActions={actionsState3}
+              registeredActions={initialRegisteredActions}
+              qualifierOptions={qualifierOptions}
+              onActionCreated={handleActionCreated3}
+              onActionDeleted={handleActionDeleted3}
+              onActionWordChanged={handleActionWordChanged3}
+              onActionQualifierChanged={handleActionQualifierChanged3}
+              onActionEquationChanged={handleActionEquationChanged3}
+              onActionDrop={handleActionDrop}
+              isFocused={focusedEditor === 'editor3'}
+              onFocus={() => setFocusedEditor('editor3')}
+              onStateChange={handleEditorStateChange}
+              editorType="ItemActionEditor"
+              globallySelectedNode={globallySelectedNode}
+              onNodeSelected={setGloballySelectedNode}
+            />
+          </div>
+        </div>
+        
+        {/* Phase 2: Debug Display */}
+        <div style={{ marginTop: '20px', fontFamily: 'monospace', backgroundColor: '#eee', padding: '10px', borderRadius: '8px' }}>
+          <h3>Global and Local Editor State</h3>
+          <pre><b>Focused Editor:</b> {focusedEditor || 'none'}</pre>
+          <pre>{JSON.stringify(editorsDebugState, null, 2)}</pre>
+        </div>
+
+        <div style={{ marginTop: '20px' }}>
+          <h2>Current Actions State</h2>
+          <pre className="state-display" style={{ background: '#f0f0f0', padding: '10px', fontSize: '0.8em', whiteSpace: 'pre-wrap' }}>
+            {JSON.stringify(actionsState1, null, 2)}
+          </pre>
           <pre className="state-display" style={{ background: '#f0f0f0', padding: '10px', fontSize: '0.8em', whiteSpace: 'pre-wrap' }}>
             {JSON.stringify(actionsState2, null, 2)}
           </pre>
+          <pre className="state-display" style={{ background: '#f0f0f0', padding: '10px', fontSize: '0.8em', whiteSpace: 'pre-wrap' }}>
+            {JSON.stringify(actionsState3, null, 2)}
+          </pre>
         </div>
-
       </div>
     </DndProvider>
   );
