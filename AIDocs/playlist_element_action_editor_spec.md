@@ -31,6 +31,7 @@ and configuring an associated "qualifier" **and "equation"** for every action no
     *   Double-clicking the `word` text enters inline edit mode for the name.
     *   **Single-clicking the `equation` text enters inline edit mode for the equation.**
     *   Contains a dropdown/selector to choose a `qualifier`.
+    *   Contains a dropdown/selector to choose an `actionId` (e.g., 'Start', 'Stop'), whose options depend on the node's type.
     *   Includes an "x" button (icon) to the right of the qualifier, within the node boundary, to delete the node.
     *   **Has state for tracking equation validity (`hasEquationError`) and inline editing state (`isEditing`, `isEditingEquation`).**
     *   **Uses refs (`inputRef`, `equationInputRef`, `originalWordRef`, `originalEquationRef`) for managing inline inputs and reverting edits.**
@@ -97,7 +98,7 @@ and configuring an associated "qualifier" **and "equation"** for every action no
 *   `registeredActions`: List of known action words for name suggestions.
 *   `qualifierOptions`: Static list of available qualifiers.
 *   `suggestionState`: Internal React state for *name* suggestion menu.
-*   **`actionsState`:** **Primary source of truth array in `ActionEditorComponent`: `[{ id: string, word: string, qualifier: string, equation: string }, ...]`.**
+*   **`actionsState`:** **Primary source of truth array in `ActionEditorComponent`: `[{ id: string, word: string, qualifier: string, equation: string, actionNodeType: string, actionId: string }, ...]`.**
 *   **ActionNodeView State/Refs:** Internal state (`isEditing`, `isEditingEquation`, `localEquation`, `hasEquationError`) and refs (`inputRef`, `equationInputRef`, `originalWordRef`, `originalEquationRef`) manage the inline editing UI within each node instance.
 *   **External state:** Changes to props like `initialActions` correctly update internal `actionsState` and editor view.
 *   **Synchronization:** Uses `requestAnimationFrame` for efficient `actionsState` -> Tiptap view updates. Listens for Tiptap editor updates (deletions) to sync back to `actionsState`.
